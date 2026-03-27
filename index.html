@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+
+<!-- PWA Manifest -->
+<link rel="manifest" href="manifest.json">
+<!-- Apple Touch Icon -->
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+<meta name="theme-color" content="#185FA5">
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>GestoStock</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --blue:#185FA5;--blue-l:#E6F1FB;--blue-m:#378ADD;--blue-d:#0C447C;
+  --teal:#1D9E75;--teal-l:#E1F5EE;--teal-d:#085041;
+  --red:#E24B4A;--red-l:#FCEBEB;
+  --amber:#BA7517;--amber-l:#FAEEDA;
+  --gray:#5F5E5A;--gray-l:#F1EFE8;--gray-m:#D3D1C7;
+  --text:#1a1a18;--text2:#5F5E5A;--text3:#888780;
+  --bg:#fff;--bg2:#F7F6F2;--bg3:#F1EFE8;
+  --bord:rgba(0,0,0,0.12);--bord2:rgba(0,0,0,0.22);
+  --r:8px;--rl:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg2);color:var(--text);font-size:14px;min-height:100vh}
+.app{max-width:600px;margin:0 auto;background:var(--bg);min-height:100vh;display:flex;flex-direction:column;position:relative}
+
+/* NAV */
+.nav{display:flex;background:var(--bg);border-bottom:0.5px solid var(--bord);position:sticky;top:0;z-index:100}
+.nb{flex:1;padding:10px 4px 8px;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--text3);border-bottom:2px solid transparent;transition:all .15s}
+.nb.on{color:var(--blue);border-bottom-color:var(--blue)}
+.nb svg{width:20px;height:20px}
+
+/* SCREENS */
+.scr{display:none;flex:1;flex-direction:column}
+.scr.on{display:flex}
+
+/* TOPBAR */
+.topbar{padding:14px 16px;border-bottom:0.5px solid var(--bord);background:var(--bg)}
+.topbar h1{font-size:17px;font-weight:600}
+.topbar p{font-size:12px;color:var(--text2);margin-top:2px}
+.topbar-row{display:flex;align-items:center;justify-content:space-between}
+
+/* CONTENT */
+.content{padding:16px;flex:1;overflow-y:auto}
+
+/* LOGIN */
+.login-wrap{display:flex;flex-direction:column;justify-content:center;padding:32px 24px;flex:1;gap:18px}
+.logo{text-align:center;margin-bottom:4px}
+.logo-icon{width:60px;height:60px;background:var(--blue);border-radius:16px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px}
+.logo h2{font-size:22px;font-weight:700;color:var(--text)}
+.logo p{font-size:13px;color:var(--text2);margin-top:3px}
+
+/* FIELDS */
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em}
+.field input,.field select,.field textarea{padding:11px 13px;border:0.5px solid var(--bord2);border-radius:var(--r);font-size:15px;background:var(--bg);color:var(--text);outline:none;transition:border-color .15s;width:100%;font-family:inherit}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue-m);box-shadow:0 0 0 3px rgba(55,138,221,.1)}
+
+/* BUTTONS */
+.btn{padding:11px 18px;border-radius:var(--r);font-size:14px;font-weight:500;cursor:pointer;border:none;transition:all .15s;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.btn-p{background:var(--blue);color:#fff;width:100%}.btn-p:hover{background:var(--blue-d)}.btn-p:active{transform:scale(.98)}
+.btn-s{background:none;color:var(--text2);border:0.5px solid var(--bord2);width:100%}.btn-s:hover{background:var(--bg2)}
+.btn-ok{background:var(--teal);color:#fff}.btn-ok:hover{background:var(--teal-d)}
+.btn-danger{background:var(--red);color:#fff}
+.btn-sm{padding:6px 11px;font-size:12px}
+.btn-icon{padding:7px;border-radius:var(--r);background:none;border:none;cursor:pointer;color:var(--text2);display:inline-flex;align-items:center}.btn-icon:hover{background:var(--bg2)}
+
+/* CARDS */
+.card{background:var(--bg);border:0.5px solid var(--bord);border-radius:var(--rl);padding:14px;margin-bottom:10px}
+.card-t{font-size:14px;font-weight:600;color:var(--text)}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500}
+.b-blue{background:var(--blue-l);color:var(--blue-d)}
+.b-teal{background:var(--teal-l);color:var(--teal-d)}
+.b-amber{background:var(--amber-l);color:var(--amber)}
+.b-red{background:var(--red-l);color:var(--red)}
+.b-gray{background:var(--gray-l);color:var(--gray)}
+
+/* STEP DOTS */
+.dots{display:flex;gap:6px;padding:11px 16px 0}
+.dot{flex:1;height:3px;border-radius:2px;background:var(--gray-m)}
+.dot.done{background:var(--teal)}.dot.act{background:var(--blue-m)}
+
+/* PROGRESS */
+.pb-wrap{margin-bottom:14px}
+.pb-lbl{display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:4px}
+.pb{height:4px;background:var(--gray-m);border-radius:2px}
+.pb-fill{height:100%;background:var(--teal);border-radius:2px;transition:width .3s}
+
+/* METRICS */
+.mrow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.met{background:var(--bg2);border-radius:var(--r);padding:10px 12px}
+.met .ml{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em}
+.met .mv{font-size:20px;font-weight:600;margin-top:2px}
+
+/* TABLE */
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{background:var(--bg2);padding:8px 7px;text-align:left;font-weight:600;font-size:11px;color:var(--text2);border-bottom:0.5px solid var(--bord2);white-space:nowrap;position:sticky;top:0;z-index:1}
+td{padding:7px;border-bottom:0.5px solid var(--bord);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr.ep td{background:rgba(225,245,238,.35)}
+tr.em td{background:rgba(252,235,235,.35)}
+.iqty{width:68px;padding:5px 7px;border:0.5px solid var(--bord2);border-radius:6px;font-size:13px;text-align:right;background:var(--bg);color:var(--text)}
+.iqty:focus{outline:none;border-color:var(--blue-m)}
+.iqty.ok{border-color:var(--teal);background:var(--teal-l)}
+.icom{width:100px;padding:4px 6px;border:0.5px solid var(--bord2);border-radius:6px;font-size:12px;background:var(--bg);color:var(--text)}
+.icom:focus{outline:none;border-color:var(--blue-m)}
+.ev{font-weight:600}.ev-p{color:var(--teal)}.ev-m{color:var(--red)}.ev-z{color:var(--text3)}
+
+/* TOGGLE */
+.trow{display:flex;align-items:center;justify-content:space-between;padding:13px;background:var(--bg2);border-radius:var(--r);border:0.5px solid var(--bord)}
+.tgl{position:relative;width:44px;height:24px;flex-shrink:0}
+.tgl input{opacity:0;width:0;height:0;position:absolute}
+.tgl-track{position:absolute;inset:0;background:var(--gray-m);border-radius:12px;transition:background .2s;cursor:pointer}
+.tgl input:checked+.tgl-track{background:var(--blue)}
+.tgl-thumb{position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s;pointer-events:none}
+.tgl input:checked~.tgl-thumb{transform:translateX(20px)}
+
+/* INV LIST ITEMS */
+.ii{border:0.5px solid var(--bord);border-radius:var(--rl);padding:13px;margin-bottom:8px;background:var(--bg);cursor:pointer;transition:all .15s}
+.ii:hover{border-color:var(--bord2);box-shadow:0 1px 4px rgba(0,0,0,.07)}
+.ii-top{display:flex;justify-content:space-between;align-items:center}
+.ii-title{font-size:14px;font-weight:600}
+.ii-sub{font-size:12px;color:var(--text2);margin-top:4px}
+.ii-foot{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap;align-items:center}
+
+/* TOAST */
+.toast{display:none;padding:10px 14px;border-radius:var(--r);font-size:13px;font-weight:500;margin-bottom:10px;align-items:center;gap:7px}
+.toast.on{display:flex}
+.t-ok{background:var(--teal-l);color:var(--teal-d);border:0.5px solid var(--teal)}
+.t-err{background:var(--red-l);color:var(--red);border:0.5px solid var(--red)}
+
+/* RAPPORT HEADER */
+.rh{background:var(--blue);color:#fff;padding:16px;border-radius:var(--rl);margin-bottom:14px}
+.rh h2{font-size:16px;font-weight:600}
+.rh p{font-size:12px;opacity:.8;margin-top:2px}
+
+/* KPI GRID */
+.kgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.kpi{background:var(--bg);border:0.5px solid var(--bord);border-radius:var(--r);padding:12px}
+.kpi .kl{font-size:11px;color:var(--text2)}
+.kpi .kv{font-size:22px;font-weight:600;margin-top:2px}
+.kv.pos{color:var(--teal)}.kv.neg{color:var(--red)}
+
+/* BOTTOM BAR */
+.bbar{padding:12px 16px;border-top:0.5px solid var(--bord);background:var(--bg);display:flex;gap:9px}
+.bbar .btn{flex:1}
+
+/* MODAL */
+.moverlay{display:none;position:absolute;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:flex-end}
+.moverlay.on{display:flex}
+.mbox{background:var(--bg);border-radius:var(--rl) var(--rl) 0 0;padding:20px;width:100%;max-height:85vh;overflow-y:auto}
+.mbox h3{font-size:16px;font-weight:600;margin-bottom:14px}
+
+/* EMPTY */
+.empty{text-align:center;padding:48px 20px;color:var(--text2)}
+.empty .ei{font-size:38px;margin-bottom:10px}
+
+/* DATE ROW */
+.drow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* USER ROW */
+.user-row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:0.5px solid var(--bord)}
+.user-row:last-child{border-bottom:none}
+.user-info{display:flex;flex-direction:column;gap:2px}
+.user-name{font-size:13px;font-weight:600}
+.user-meta{font-size:11px;color:var(--text3)}
+.user-actions{display:flex;gap:6px}
+
+/* FROZEN BADGE */
+.frozen-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 7px;border-radius:10px;background:var(--amber-l);color:var(--amber);font-weight:500}
+
+/* ADMIN PANEL */
+.admin-section{margin-bottom:20px}
+.admin-section-title{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;padding-bottom:6px;border-bottom:0.5px solid var(--bord)}
+.ag-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:var(--blue-l);color:var(--blue-d)}
+
+/* IMPORT ZONE */
+.import-zone{border:1.5px dashed var(--bord2);border-radius:var(--rl);padding:20px;text-align:center;cursor:pointer;transition:all .15s;background:var(--bg2)}
+.import-zone:hover{border-color:var(--blue-m);background:var(--blue-l)}
+.import-zone p{font-size:13px;color:var(--text2);margin-top:6px}
+
+/* Connectivity notice */
+.conn-note{background:var(--amber-l);border:0.5px solid var(--amber);color:var(--amber);padding:10px 13px;border-radius:var(--r);font-size:12px;margin-bottom:12px}
+
+/* SECTION DIVIDER */
+.sdiv{height:1px;background:var(--bord);margin:16px 0}
+
+/* ADMIN HEADER */
+.admin-badge{background:var(--red-l);color:var(--red);border:0.5px solid var(--red);font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+<!-- ===== LOGIN ===== -->
+<div class="scr on" id="scr-login">
+<div class="login-wrap">
+  <div class="logo">
+    <div class="logo-icon">
+      <svg width="30" height="30" fill="none" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2" fill="#fff" opacity=".9"/><rect x="13" y="3" width="8" height="8" rx="2" fill="#fff" opacity=".6"/><rect x="3" y="13" width="8" height="8" rx="2" fill="#fff" opacity=".6"/><rect x="13" y="13" width="8" height="8" rx="2" fill="#fff" opacity=".9"/></svg>
+    </div>
+    <h2>GestoStock</h2>
+    <p>Gestion des inventaires terrain</p>
+  </div>
+  <div class="field">
+    <label>Agence</label>
+    <select id="l-ag"><option value="">Sélectionner une agence...</option></select>
+  </div>
+  <div class="field">
+    <label>Utilisateur</label>
+    <select id="l-usr"><option value="">Sélectionner un utilisateur...</option></select>
+  </div>
+  <div class="field">
+    <label>Mot de passe</label>
+    <input type="password" id="l-pwd" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/>
+  </div>
+  <button class="btn btn-p" onclick="doLogin()">Se connecter</button>
+  <div id="l-err" class="toast t-err"></div>
+</div>
+</div>
+
+<!-- ===== NAV ===== -->
+<nav class="nav" id="main-nav" style="display:none">
+  <button class="nb on" onclick="tab('saisie')" id="nb-saisie">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" d="M12 4v16M4 12h16"/></svg>Saisie
+  </button>
+  <button class="nb" onclick="tab('encours')" id="nb-encours">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 7v5l3 3"/></svg>En cours
+  </button>
+  <button class="nb" onclick="tab('clotures')" id="nb-clotures">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" d="M9 12l2 2 4-4M5 8a7 7 0 1114 0v1a7 7 0 01-14 0V8z"/></svg>Clôturés
+  </button>
+  <button class="nb" onclick="tab('rapports')" id="nb-rapports">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><path stroke-linecap="round" d="M8 9h8M8 13h5"/></svg>Rapports
+  </button>
+  <button class="nb" onclick="tab('admin')" id="nb-admin" style="display:none">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>Admin
+  </button>
+</nav>
+
+<!-- ===== SAISIE ===== -->
+<div class="scr" id="scr-saisie">
+  <div class="topbar">
+    <div class="topbar-row">
+      <div><h1>Nouvel inventaire</h1><p id="s-aglab">—</p></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="s-userlab" style="font-size:12px;color:var(--text2)"></span>
+        <button class="btn-icon" onclick="logout()" title="Déconnexion">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="dots"><div class="dot act" id="d1"></div><div class="dot" id="d2"></div><div class="dot" id="d3"></div></div>
+  <div class="content" id="s-content">
+
+    <!-- ÉTAPE 1 -->
+    <div id="st1">
+      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Famille de produits</div>
+      <div class="field" style="margin-bottom:14px">
+        <label>Famille</label>
+        <select id="fam-sel" onchange="onFamChange()">
+          <option value="">Choisir une famille...</option>
+        </select>
+      </div>
+      <div id="fam-info" style="display:none;padding:10px 13px;background:var(--blue-l);border-radius:var(--r);margin-bottom:14px;font-size:13px;color:var(--blue-d)"></div>
+      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;margin-top:14px">Options</div>
+      <div class="trow">
+        <div>
+          <div style="font-size:14px;font-weight:500">Inventaire tournant</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">Comptage partiel — affiche uniquement les articles tournants</div>
+        </div>
+        <label class="tgl"><input type="checkbox" id="tgl-t" onchange="onFamChange()"><div class="tgl-track"></div><div class="tgl-thumb"></div></label>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label>Date de l'inventaire</label>
+        <input type="date" id="inv-dt"/>
+      </div>
+      <div style="margin-top:14px">
+        <button class="btn btn-p" onclick="goStep2()">Ouvrir le formulaire →</button>
+      </div>
+    </div>
+
+    <!-- ÉTAPE 2 : saisie -->
+    <div id="st2" style="display:none">
+      <div class="pb-wrap">
+        <div class="pb-lbl"><span id="pb-lbl">0 / 0 articles</span><span id="pb-pct">0%</span></div>
+        <div class="pb"><div class="pb-fill" id="pb-fill" style="width:0"></div></div>
+      </div>
+      <div class="mrow">
+        <div class="met"><div class="ml">Saisis</div><div class="mv" id="m-s">0</div></div>
+        <div class="met"><div class="ml">Écarts +</div><div class="mv" style="color:var(--teal)" id="m-p">0</div></div>
+        <div class="met"><div class="ml">Écarts −</div><div class="mv" style="color:var(--red)" id="m-m">0</div></div>
+      </div>
+      <div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span id="st2-fam-badge" class="badge b-blue"></span>
+        <span id="st2-tournant-badge" style="display:none" class="badge b-amber">Tournant</span>
+        <span class="frozen-badge">
+          <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path stroke-linecap="round" d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          Stocks figés à l'ouverture
+        </span>
+      </div>
+      <div class="tw">
+        <table id="inv-tbl">
+          <thead><tr><th>Réf.</th><th>Désignation</th><th>Stock figé</th><th>Relevé</th><th>Écart</th><th>Note</th></tr></thead>
+          <tbody id="inv-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ÉTAPE 3 : validation -->
+    <div id="st3" style="display:none">
+      <div class="rh"><h2 id="v-title">Validation</h2><p id="v-sub">—</p></div>
+      <div class="kgrid">
+        <div class="kpi"><div class="kl">Articles comptés</div><div class="kv" id="v-cpt">—</div></div>
+        <div class="kpi"><div class="kl">Total articles</div><div class="kv" id="v-tot">—</div></div>
+        <div class="kpi"><div class="kl">Écarts +</div><div class="kv pos" id="v-p">—</div></div>
+        <div class="kpi"><div class="kl">Écarts −</div><div class="kv neg" id="v-m">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-t" style="margin-bottom:10px">Principaux écarts</div>
+        <div id="v-ecarts"></div>
+      </div>
+      <div class="field" style="margin-top:4px">
+        <label>Commentaire général</label>
+        <textarea id="v-com" rows="3" style="resize:none"></textarea>
+      </div>
+    </div>
+
+  </div>
+  <div class="bbar" id="bb1"><button class="btn btn-s" onclick="resetSaisie()">Annuler</button></div>
+  <div class="bbar" id="bb2" style="display:none">
+    <button class="btn btn-s btn-sm" onclick="goStep1()">← Retour</button>
+    <button class="btn btn-s" onclick="saveEncours()">Enregistrer</button>
+    <button class="btn btn-p" onclick="goStep3()">Valider →</button>
+  </div>
+  <div class="bbar" id="bb3" style="display:none">
+    <button class="btn btn-s" onclick="goStep2()">← Modifier</button>
+    <button class="btn btn-ok btn-p" onclick="cloture()">Clôturer l'inventaire</button>
+  </div>
+</div>
+
+<!-- ===== EN COURS ===== -->
+<div class="scr" id="scr-encours">
+  <div class="topbar">
+    <h1>En cours</h1><p id="ec-lab">—</p>
+  </div>
+  <div class="content">
+    <div id="t-encours" class="toast"></div>
+    <div id="encours-list"></div>
+  </div>
+</div>
+
+<!-- ===== CLÔTURÉS ===== -->
+<div class="scr" id="scr-clotures">
+  <div class="topbar"><h1>Clôturés</h1><p id="cl-lab">—</p></div>
+  <div class="content">
+    <div id="t-clotures" class="toast"></div>
+    <div id="clotures-list"></div>
+  </div>
+</div>
+
+<!-- ===== RAPPORTS ===== -->
+<div class="scr" id="scr-rapports">
+  <div class="topbar"><h1>Rapports</h1><p>Export & analyse</p></div>
+  <div class="content">
+    <div id="t-rapports" class="toast"></div>
+    <div class="card">
+      <div class="card-t" style="margin-bottom:4px">Export récapitulatif Excel</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Références comptées + écarts sur une période.</div>
+      <div class="drow">
+        <div class="field"><label>Date début</label><input type="date" id="r-d1"/></div>
+        <div class="field"><label>Date fin</label><input type="date" id="r-d2"/></div>
+      </div>
+      <div class="field" style="margin-top:10px">
+        <label>Agence</label>
+        <select id="r-ag"><option value="">Toutes les agences</option></select>
+      </div>
+      <button class="btn btn-p" style="margin-top:12px" onclick="exportXLS()">
+        <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M8 12l4 4 4-4M12 4v12"/></svg>
+        Générer l'export Excel
+      </button>
+    </div>
+    <div class="card">
+      <div class="card-t" style="margin-bottom:10px">Statistiques</div>
+      <div id="rpt-stats"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ADMIN ===== -->
+<div class="scr" id="scr-admin">
+  <div class="topbar">
+    <div class="topbar-row">
+      <div>
+        <h1>Administration</h1>
+        <p>Gestion globale — toutes agences</p>
+      </div>
+      <span class="admin-badge">ADMIN</span>
+    </div>
+  </div>
+  <div class="content">
+    <div id="t-admin" class="toast"></div>
+
+    <!-- IMPORT EXCEL -->
+    <div class="admin-section">
+      <div class="admin-section-title">Import catalogue articles (Excel SQL)</div>
+      <div class="import-zone" onclick="document.getElementById('xl-file').click()">
+        <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="var(--blue-m)" stroke-width="1.5"><path stroke-linecap="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M16 8l-4-4-4 4M12 4v12"/></svg>
+        <p>Cliquer pour importer un fichier Excel<br><span style="font-size:11px;color:var(--text3)">.xlsx — voir format requis ci-dessous</span></p>
+      </div>
+      <input type="file" id="xl-file" accept=".xlsx,.xls" style="display:none" onchange="importExcel(this)"/>
+      <div id="xl-result" style="margin-top:10px"></div>
+      <div class="conn-note" style="margin-top:12px">
+        <strong>Format Excel requis</strong><br>
+        Feuille 1 nommée <code>Articles</code> — colonnes obligatoires dans cet ordre :<br><br>
+        <strong>A : agence</strong> — identifiant agence (ex: <code>AGC-NORD</code>)<br>
+        <strong>B : ref</strong> — référence article (ex: <code>AE-001</code>)<br>
+        <strong>C : designation</strong> — libellé complet de l'article<br>
+        <strong>D : famille</strong> — famille de produits (ex: <code>Aérosols</code>)<br>
+        <strong>E : stock</strong> — stock réel (nombre entier, ex: <code>24</code>)<br>
+        <strong>F : tournant</strong> — <code>1</code> si article tournant, <code>0</code> sinon<br><br>
+        La ligne 1 doit être l'en-tête. Les données commencent ligne 2.
+      </div>
+      <button class="btn btn-s" style="margin-top:10px;font-size:12px" onclick="downloadTemplateExcel()">
+        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M8 12l4 4 4-4M12 4v12"/></svg>
+        Télécharger le modèle Excel vide
+      </button>
+    </div>
+
+    <div class="sdiv"></div>
+
+    <!-- GESTION AGENCES -->
+    <div class="admin-section">
+      <div class="admin-section-title">Agences</div>
+      <div id="admin-agences-list"></div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <input type="text" id="new-ag-id" placeholder="Code (ex: AGC-OUE)" style="flex:1;padding:9px 11px;border:0.5px solid var(--bord2);border-radius:var(--r);font-size:13px;font-family:inherit" />
+        <input type="text" id="new-ag-label" placeholder="Nom (ex: Lille)" style="flex:1;padding:9px 11px;border:0.5px solid var(--bord2);border-radius:var(--r);font-size:13px;font-family:inherit" />
+        <button class="btn btn-p btn-sm" style="width:auto" onclick="addAgence()">+ Ajouter</button>
+      </div>
+    </div>
+
+    <div class="sdiv"></div>
+
+    <!-- GESTION UTILISATEURS -->
+    <div class="admin-section">
+      <div class="admin-section-title">Utilisateurs</div>
+      <div id="admin-users-list"></div>
+    </div>
+
+    <!-- CRÉER UTILISATEUR -->
+    <div class="card" style="margin-top:4px">
+      <div class="card-t" style="margin-bottom:12px">Créer un utilisateur</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="field">
+          <label>Agence</label>
+          <select id="nu-ag"></select>
+        </div>
+        <div class="field">
+          <label>Nom complet</label>
+          <input type="text" id="nu-nom" placeholder="Prénom Nom"/>
+        </div>
+        <div class="field">
+          <label>Login</label>
+          <input type="text" id="nu-login" placeholder="p.nom" autocomplete="off"/>
+        </div>
+        <div class="field">
+          <label>Mot de passe</label>
+          <input type="password" id="nu-pwd" placeholder="Min. 6 caractères" autocomplete="new-password"/>
+        </div>
+        <button class="btn btn-ok" onclick="createUser()">Créer l'utilisateur</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===== MODAL DÉTAIL ===== -->
+<div class="moverlay" id="modal" onclick="closeModal(event)">
+  <div class="mbox">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 id="m-title">Détail</h3>
+      <button class="btn-icon" onclick="closeModalNow()">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div id="m-body"></div>
+    <div id="m-actions" style="display:flex;gap:8px;margin-top:14px"></div>
+  </div>
+</div>
+
+<!-- ===== MODAL CHANGER MDP ===== -->
+<div class="moverlay" id="modal-pwd" onclick="if(event.target===this)this.classList.remove('on')">
+  <div class="mbox">
+    <h3>Modifier le mot de passe</h3>
+    <p id="pwd-modal-user" style="font-size:13px;color:var(--text2);margin-bottom:14px"></p>
+    <div class="field" style="margin-bottom:12px">
+      <label>Nouveau mot de passe</label>
+      <input type="password" id="pwd-new" placeholder="Min. 6 caractères" autocomplete="new-password"/>
+    </div>
+    <div class="field" style="margin-bottom:14px">
+      <label>Confirmer</label>
+      <input type="password" id="pwd-confirm" placeholder="Répéter le mot de passe"/>
+    </div>
+    <div id="pwd-err" class="toast t-err" style="margin-bottom:10px"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ok" onclick="savePwd()">Enregistrer</button>
+      <button class="btn btn-s" onclick="document.getElementById('modal-pwd').classList.remove('on')">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===================================================
+// ADMIN CONFIG — identifiants admin global
+// ===================================================
+var ADMIN = {
+  login: 'admin',
+  pwd: 'Admin@GestoStock2024',
+  nom: 'Administrateur',
+  agence: '__ADMIN__'
+};
+
+// ===================================================
+// DATA: Articles SQL
+// Format: {agence, ref, des, famille, stock, tournant}
+// ===================================================
+var SQL_DATA = [
+  // AGENCE NORD
+  {agence:'AGC-NORD',ref:'AE-001',des:'MULTI SPRAY MULTIFONCTIONS 8EN1 400ML (PC)',famille:'Aérosols',stock:24,tournant:1},
+  {agence:'AGC-NORD',ref:'AE-002',des:'ZINC SPRAY GALVANISATION A FROID ASPECT MAT 400ML (PC)',famille:'Aérosols',stock:18,tournant:0},
+  {agence:'AGC-NORD',ref:'AE-003',des:'PEINTURE EPOXY GRIS RAL7035 400ML',famille:'Aérosols',stock:31,tournant:1},
+  {agence:'AGC-NORD',ref:'AE-004',des:'DEGRAISSANT UNIVERSEL 500ML',famille:'Aérosols',stock:12,tournant:0},
+  {agence:'AGC-NORD',ref:'AE-005',des:'LUBRIFIANT CHAINE 400ML',famille:'Aérosols',stock:9,tournant:1},
+  {agence:'AGC-NORD',ref:'AD-001',des:'SOUDAFOAM PISTOLABLE 4X4 GUN VIS DURAVALVE 750ML',famille:'Adhésifs',stock:45,tournant:0},
+  {agence:'AGC-NORD',ref:'AD-002',des:'PATTE A TASSEAUX 45X180 BOITE DE 100',famille:'Adhésifs',stock:8,tournant:0},
+  {agence:'AGC-NORD',ref:'AD-003',des:'COLLE POLYURETHANE 1K 310ML',famille:'Adhésifs',stock:22,tournant:1},
+  {agence:'AGC-NORD',ref:'AD-004',des:'ADHESIF DOUBLE FACE 50MMX50M',famille:'Adhésifs',stock:17,tournant:0},
+  {agence:'AGC-NORD',ref:'AD-005',des:'MASTIC SILICONE TRANSPARENT 310ML',famille:'Adhésifs',stock:29,tournant:1},
+  {agence:'AGC-NORD',ref:'OU-001',des:'BROSSE METALLIQUE CONVEXE EN FILS D\'ACIER LAITONNE (PC)',famille:'Outillage',stock:33,tournant:0},
+  {agence:'AGC-NORD',ref:'OU-002',des:'DISQUE ABRASIF INOX 125MM GR40',famille:'Outillage',stock:56,tournant:1},
+  {agence:'AGC-NORD',ref:'OU-003',des:'FRAISE CARBURE CYLINDRIQUE D10MM',famille:'Outillage',stock:14,tournant:0},
+  {agence:'AGC-NORD',ref:'FX-001',des:'VIS AUTOPERCEUSE ACIER ZINGUE 4.2X38 BTE250',famille:'Fixation',stock:120,tournant:1},
+  {agence:'AGC-NORD',ref:'FX-002',des:'CHEVILLE NYLON 10X50 SAC200',famille:'Fixation',stock:89,tournant:0},
+  {agence:'AGC-NORD',ref:'FX-003',des:'BOULON INOX HM M8X40 BOITE50',famille:'Fixation',stock:43,tournant:1},
+  {agence:'AGC-NORD',ref:'PN-001',des:'SWISSPEARL AIRCURED ZENOR LISSE 3070MMX1270MM 8MM 11115',famille:'Panneaux',stock:7,tournant:0},
+  {agence:'AGC-NORD',ref:'PN-002',des:'FRAIS DE RETOURNEMENT PANNEAUX 60X120',famille:'Panneaux',stock:0,tournant:0},
+  {agence:'AGC-NORD',ref:'PN-003',des:'PANNEAU FIBER CIMENT 1200X2500 10MM',famille:'Panneaux',stock:15,tournant:0},
+  {agence:'AGC-NORD',ref:'EP-001',des:'CASQUE SECURITE BLANC REGLABLE',famille:'EPI',stock:16,tournant:0},
+  {agence:'AGC-NORD',ref:'EP-002',des:'LUNETTES PROTECTION INCOLORE',famille:'EPI',stock:24,tournant:0},
+  {agence:'AGC-NORD',ref:'EP-003',des:'GANTS ANTI-COUPURE N5 T9',famille:'EPI',stock:12,tournant:1},
+  {agence:'AGC-NORD',ref:'EP-004',des:'MASQUE FFP2 BOITE20',famille:'EPI',stock:4,tournant:0},
+  // AGENCE SUD
+  {agence:'AGC-SUD',ref:'AE-001',des:'MULTI SPRAY MULTIFONCTIONS 8EN1 400ML (PC)',famille:'Aérosols',stock:15,tournant:1},
+  {agence:'AGC-SUD',ref:'AE-003',des:'PEINTURE EPOXY GRIS RAL7035 400ML',famille:'Aérosols',stock:22,tournant:1},
+  {agence:'AGC-SUD',ref:'AD-001',des:'SOUDAFOAM PISTOLABLE 4X4 GUN VIS DURAVALVE 750ML',famille:'Adhésifs',stock:38,tournant:0},
+  {agence:'AGC-SUD',ref:'OU-001',des:'BROSSE METALLIQUE CONVEXE EN FILS D\'ACIER LAITONNE (PC)',famille:'Outillage',stock:28,tournant:0},
+  {agence:'AGC-SUD',ref:'FX-001',des:'VIS AUTOPERCEUSE ACIER ZINGUE 4.2X38 BTE250',famille:'Fixation',stock:95,tournant:1},
+  {agence:'AGC-SUD',ref:'EP-001',des:'CASQUE SECURITE BLANC REGLABLE',famille:'EPI',stock:10,tournant:0},
+  // AGENCE EST
+  {agence:'AGC-EST',ref:'AE-001',des:'MULTI SPRAY MULTIFONCTIONS 8EN1 400ML (PC)',famille:'Aérosols',stock:20,tournant:0},
+  {agence:'AGC-EST',ref:'AD-001',des:'SOUDAFOAM PISTOLABLE 4X4 GUN VIS DURAVALVE 750ML',famille:'Adhésifs',stock:52,tournant:0},
+  {agence:'AGC-EST',ref:'FX-002',des:'CHEVILLE NYLON 10X50 SAC200',famille:'Fixation',stock:110,tournant:0},
+  {agence:'AGC-EST',ref:'PN-001',des:'SWISSPEARL AIRCURED ZENOR LISSE 3070MMX1270MM 8MM 11115',famille:'Panneaux',stock:5,tournant:0},
+];
+
+// ===================================================
+// USERS — utilisateurs normaux (pas l'admin)
+// ===================================================
+var USERS = [
+  {agence:'AGC-NORD',nom:'Martin Dupont',login:'mdupont',pwd:'Nord2024!'},
+  {agence:'AGC-NORD',nom:'Sophie Leroy',login:'sleroy',pwd:'Nord2024!'},
+  {agence:'AGC-SUD',nom:'Paul Mercier',login:'pmercier',pwd:'Sud2024!'},
+  {agence:'AGC-SUD',nom:'Clara Blanc',login:'cblanc',pwd:'Sud2024!'},
+  {agence:'AGC-EST',nom:'Jean Müller',login:'jmuller',pwd:'Est2024!'},
+];
+
+var AGENCES = [
+  {id:'AGC-NORD',label:'Marcq'},
+  {id:'AGC-SUD', label:'Tremblay'},
+  {id:'AGC-EST', label:'Beauvais'},
+];
+
+// ===================================================
+// STATE
+// ===================================================
+var S = {
+  user:null, agence:null, agLabel:null, isAdmin:false,
+  familles:[], articles:[],
+  selFam:null, tournant:false, invDate:'',
+  frozenStocks:{},
+  vals:{}, coms:{},
+  step:1, editId:null,
+  inventaires:[],
+  pwdTargetLogin: null
+};
+
+// ===================================================
+// INIT
+// ===================================================
+window.onload = function() {
+  var d = new Date().toISOString().split('T')[0];
+  document.getElementById('inv-dt').value = d;
+  // Populate agence select on login (exclude admin agence)
+  var sel = document.getElementById('l-ag');
+  // Add "Admin" option at top
+  var oadm = document.createElement('option');
+  oadm.value = '__ADMIN__'; oadm.textContent = '🔐 Administration'; sel.appendChild(oadm);
+  AGENCES.forEach(function(a){
+    var o=document.createElement('option'); o.value=a.id; o.textContent=a.label; sel.appendChild(o);
+  });
+  sel.onchange = function(){ populateUsers(this.value); };
+  // Rapport agence dropdown
+  var rsel = document.getElementById('r-ag');
+  AGENCES.forEach(function(a){
+    var o=document.createElement('option'); o.value=a.id; o.textContent=a.label; rsel.appendChild(o);
+  });
+};
+
+function populateUsers(agId) {
+  var sel = document.getElementById('l-usr');
+  sel.innerHTML = '<option value="">Sélectionner un utilisateur...</option>';
+  if(agId === '__ADMIN__') {
+    var o = document.createElement('option'); o.value='admin'; o.textContent='Administrateur'; sel.appendChild(o);
+    return;
+  }
+  USERS.filter(u=>u.agence===agId).forEach(function(u){
+    var o=document.createElement('option'); o.value=u.login; o.textContent=u.nom; sel.appendChild(o);
+  });
+}
+
+// ===================================================
+// LOGIN
+// ===================================================
+function doLogin() {
+  var ag = document.getElementById('l-ag').value;
+  var usr = document.getElementById('l-usr').value;
+  var pwd = document.getElementById('l-pwd').value;
+  var err = document.getElementById('l-err');
+  if(!ag){toast2(err,'Sélectionnez une agence','err');return;}
+  if(!usr){toast2(err,'Sélectionnez un utilisateur','err');return;}
+  if(!pwd){toast2(err,'Saisissez le mot de passe','err');return;}
+
+  // Admin check
+  if(ag === '__ADMIN__' && usr === 'admin') {
+    if(pwd !== ADMIN.pwd){toast2(err,'Mot de passe incorrect','err');return;}
+    S.user = ADMIN; S.agence = '__ADMIN__'; S.agLabel = 'Administration'; S.isAdmin = true;
+    enterApp();
+    tab('admin');
+    return;
+  }
+
+  // Normal user
+  var u = USERS.find(x=>x.login===usr && x.agence===ag);
+  if(!u || u.pwd !== pwd){toast2(err,'Mot de passe incorrect','err');return;}
+  S.user = u; S.agence = ag; S.agLabel = AGENCES.find(a=>a.id===ag).label; S.isAdmin = false;
+  enterApp();
+  tab('saisie');
+}
+
+function enterApp() {
+  document.getElementById('scr-login').classList.remove('on');
+  document.getElementById('main-nav').style.display='flex';
+  // Show/hide admin tab
+  document.getElementById('nb-admin').style.display = S.isAdmin ? '' : 'none';
+  if(!S.isAdmin) {
+    buildFamilleList();
+    document.getElementById('s-aglab').textContent = S.agLabel;
+    document.getElementById('s-userlab').textContent = S.user.nom;
+    document.getElementById('ec-lab').textContent = S.agLabel;
+    document.getElementById('cl-lab').textContent = S.agLabel;
+    renderEncours();
+    renderClotures();
+    renderStats();
+  } else {
+    renderAdminAgences();
+    renderAdminUsers();
+    populateAdminAgSelect();
+  }
+}
+
+function logout() {
+  S.user=null; S.agence=null; S.isAdmin=false;
+  document.getElementById('main-nav').style.display='none';
+  document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));
+  document.getElementById('scr-login').classList.add('on');
+  document.getElementById('l-pwd').value='';
+  document.getElementById('l-usr').value='';
+  document.getElementById('l-ag').value='';
+  resetSaisie();
+}
+
+// ===================================================
+// TABS
+// ===================================================
+function tab(name) {
+  document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));
+  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('on'));
+  document.getElementById('scr-'+name).classList.add('on');
+  document.getElementById('nb-'+name).classList.add('on');
+  if(name==='encours') renderEncours();
+  if(name==='clotures') renderClotures();
+  if(name==='rapports') renderStats();
+  if(name==='admin'){renderAdminAgences();renderAdminUsers();}
+}
+
+// ===================================================
+// ADMIN — AGENCES
+// ===================================================
+function renderAdminAgences() {
+  var el = document.getElementById('admin-agences-list');
+  if(!AGENCES.length){el.innerHTML='<div style="font-size:13px;color:var(--text2)">Aucune agence</div>';return;}
+  el.innerHTML = AGENCES.map(function(ag){
+    var nbUsers = USERS.filter(u=>u.agence===ag.id).length;
+    var nbArts = SQL_DATA.filter(a=>a.agence===ag.id).length;
+    return '<div class="user-row">'+
+      '<div class="user-info">'+
+        '<div class="user-name"><span class="ag-badge">'+ag.id+'</span> '+ag.label+'</div>'+
+        '<div class="user-meta">'+nbUsers+' utilisateur(s) · '+nbArts+' article(s)</div>'+
+      '</div>'+
+      '<div class="user-actions">'+
+        '<button class="btn btn-s btn-sm" onclick="deleteAgence(\''+ag.id+'\')" style="color:var(--red);border-color:var(--red)">Supprimer</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
+function addAgence() {
+  var id = document.getElementById('new-ag-id').value.trim().toUpperCase();
+  var label = document.getElementById('new-ag-label').value.trim();
+  if(!id||!label){toast('t-admin','Renseignez le code et le nom','err');return;}
+  if(AGENCES.find(a=>a.id===id)){toast('t-admin','Ce code agence existe déjà','err');return;}
+  AGENCES.push({id,label});
+  document.getElementById('new-ag-id').value='';
+  document.getElementById('new-ag-label').value='';
+  renderAdminAgences();
+  populateAdminAgSelect();
+  // Refresh login dropdown
+  refreshLoginAgSelect();
+  toast('t-admin','Agence '+label+' créée','ok');
+}
+
+function deleteAgence(id) {
+  var ag = AGENCES.find(a=>a.id===id);
+  if(!ag) return;
+  var nbU = USERS.filter(u=>u.agence===id).length;
+  var msg = 'Supprimer l\'agence "'+ag.label+'"';
+  if(nbU>0) msg += ' et ses '+nbU+' utilisateur(s)';
+  msg += ' ?';
+  if(!confirm(msg)) return;
+  AGENCES = AGENCES.filter(a=>a.id!==id);
+  USERS = USERS.filter(u=>u.agence!==id);
+  SQL_DATA = SQL_DATA.filter(a=>a.agence!==id);
+  renderAdminAgences();
+  renderAdminUsers();
+  populateAdminAgSelect();
+  refreshLoginAgSelect();
+  toast('t-admin','Agence supprimée','ok');
+}
+
+function refreshLoginAgSelect() {
+  var sel = document.getElementById('l-ag');
+  // Keep admin option
+  sel.innerHTML = '<option value="">Sélectionner une agence...</option><option value="__ADMIN__">🔐 Administration</option>';
+  AGENCES.forEach(function(a){
+    var o=document.createElement('option'); o.value=a.id; o.textContent=a.label; sel.appendChild(o);
+  });
+  // Also refresh rapport select
+  var rsel = document.getElementById('r-ag');
+  rsel.innerHTML = '<option value="">Toutes les agences</option>';
+  AGENCES.forEach(function(a){
+    var o=document.createElement('option'); o.value=a.id; o.textContent=a.label; rsel.appendChild(o);
+  });
+}
+
+// ===================================================
+// ADMIN — UTILISATEURS
+// ===================================================
+function renderAdminUsers() {
+  var el = document.getElementById('admin-users-list');
+  if(!USERS.length){el.innerHTML='<div style="font-size:13px;color:var(--text2);padding:10px 0">Aucun utilisateur</div>';return;}
+  // Group by agence
+  var html = '';
+  AGENCES.forEach(function(ag){
+    var usersAg = USERS.filter(u=>u.agence===ag.id);
+    if(!usersAg.length) return;
+    html += '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px">'+ag.label+' <span class="ag-badge">'+ag.id+'</span></div>';
+    usersAg.forEach(function(u){
+      html += '<div class="user-row">'+
+        '<div class="user-info">'+
+          '<div class="user-name">'+u.nom+'</div>'+
+          '<div class="user-meta">@'+u.login+'</div>'+
+        '</div>'+
+        '<div class="user-actions">'+
+          '<button class="btn btn-s btn-sm" onclick="openPwdModal(\''+u.login+'\')">🔑 MDP</button>'+
+          '<button class="btn btn-s btn-sm" onclick="deleteUser(\''+u.login+'\')" style="color:var(--red);border-color:var(--red)">✕</button>'+
+        '</div>'+
+      '</div>';
+    });
+  });
+  // Users without a known agence
+  var orphans = USERS.filter(u=>!AGENCES.find(a=>a.id===u.agence));
+  if(orphans.length){
+    html += '<div style="font-size:10px;font-weight:700;color:var(--red);margin:10px 0 6px">Agence inconnue</div>';
+    orphans.forEach(function(u){
+      html += '<div class="user-row">'+
+        '<div class="user-info"><div class="user-name">'+u.nom+'</div><div class="user-meta">@'+u.login+' · '+u.agence+'</div></div>'+
+        '<div class="user-actions"><button class="btn btn-s btn-sm" onclick="deleteUser(\''+u.login+'\')" style="color:var(--red);border-color:var(--red)">✕</button></div>'+
+      '</div>';
+    });
+  }
+  el.innerHTML = html;
+}
+
+function populateAdminAgSelect() {
+  var sel = document.getElementById('nu-ag');
+  sel.innerHTML = '<option value="">-- Choisir --</option>';
+  AGENCES.forEach(function(a){
+    var o=document.createElement('option'); o.value=a.id; o.textContent=a.label+' ('+a.id+')'; sel.appendChild(o);
+  });
+}
+
+function createUser() {
+  var ag = document.getElementById('nu-ag').value;
+  var nom = document.getElementById('nu-nom').value.trim();
+  var login = document.getElementById('nu-login').value.trim();
+  var pwd = document.getElementById('nu-pwd').value;
+  if(!ag||!nom||!login||!pwd){toast('t-admin','Tous les champs sont obligatoires','err');return;}
+  if(pwd.length<6){toast('t-admin','Mot de passe trop court (min. 6 car.)','err');return;}
+  if(USERS.find(u=>u.login===login)){toast('t-admin','Ce login existe déjà','err');return;}
+  if(login==='admin'){toast('t-admin','Login réservé','err');return;}
+  USERS.push({agence:ag,nom,login,pwd});
+  document.getElementById('nu-ag').value='';
+  document.getElementById('nu-nom').value='';
+  document.getElementById('nu-login').value='';
+  document.getElementById('nu-pwd').value='';
+  renderAdminUsers();
+  toast('t-admin','Utilisateur '+nom+' créé','ok');
+}
+
+function deleteUser(login) {
+  var u = USERS.find(x=>x.login===login);
+  if(!u) return;
+  if(!confirm('Supprimer l\'utilisateur "'+u.nom+'" ?')) return;
+  USERS = USERS.filter(x=>x.login!==login);
+  renderAdminUsers();
+  toast('t-admin','Utilisateur supprimé','ok');
+}
+
+function openPwdModal(login) {
+  var u = USERS.find(x=>x.login===login);
+  if(!u) return;
+  S.pwdTargetLogin = login;
+  document.getElementById('pwd-modal-user').textContent = u.nom+' — @'+login;
+  document.getElementById('pwd-new').value='';
+  document.getElementById('pwd-confirm').value='';
+  document.getElementById('pwd-err').classList.remove('on');
+  document.getElementById('modal-pwd').classList.add('on');
+}
+
+function savePwd() {
+  var np = document.getElementById('pwd-new').value;
+  var cp = document.getElementById('pwd-confirm').value;
+  var err = document.getElementById('pwd-err');
+  if(np.length<6){toast2(err,'Mot de passe trop court (min. 6 car.)','err');return;}
+  if(np!==cp){toast2(err,'Les mots de passe ne correspondent pas','err');return;}
+  var idx = USERS.findIndex(u=>u.login===S.pwdTargetLogin);
+  if(idx<0){toast2(err,'Utilisateur introuvable','err');return;}
+  USERS[idx].pwd = np;
+  document.getElementById('modal-pwd').classList.remove('on');
+  toast('t-admin','Mot de passe modifié pour @'+S.pwdTargetLogin,'ok');
+  S.pwdTargetLogin=null;
+}
+
+// ===================================================
+// IMPORT EXCEL — catalogue articles
+// ===================================================
+function importExcel(input) {
+  var file = input.files[0]; if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var wb = XLSX.read(e.target.result, {type:'array'});
+      // Look for sheet named "Articles" (case-insensitive), else use first sheet
+      var sheetName = wb.SheetNames.find(n=>n.toLowerCase()==='articles') || wb.SheetNames[0];
+      var ws = wb.Sheets[sheetName];
+      var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      if(rows.length<2){showXlResult('err','Le fichier est vide ou sans données.');return;}
+      // Skip header row (row 0)
+      var imported=[], errors=[], skipped=0;
+      for(var i=1;i<rows.length;i++){
+        var r=rows[i];
+        // Skip completely empty rows
+        if(!r[0]&&!r[1]&&!r[2]) {skipped++;continue;}
+        var agence = String(r[0]||'').trim();
+        var ref    = String(r[1]||'').trim();
+        var des    = String(r[2]||'').trim();
+        var fam    = String(r[3]||'').trim();
+        var stock  = parseInt(r[4]);
+        var tourn  = parseInt(r[5]);
+        if(!agence||!ref||!des||!fam){errors.push('Ligne '+(i+1)+': données manquantes (agence/ref/désignation/famille)');continue;}
+        if(isNaN(stock)){errors.push('Ligne '+(i+1)+': stock non numérique ("'+r[4]+'")');continue;}
+        if(isNaN(tourn)||tourn!==0&&tourn!==1){tourn=0;} // default 0 if not 0/1
+        imported.push({agence,ref,des,famille:fam,stock,tournant:tourn});
+      }
+      if(imported.length===0){showXlResult('err','Aucun article valide trouvé.<br>'+(errors.slice(0,5).join('<br>')));return;}
+      // Merge: replace articles for agences present in import
+      var importedAgences=[...new Set(imported.map(a=>a.agence))];
+      SQL_DATA=SQL_DATA.filter(a=>!importedAgences.includes(a.agence));
+      SQL_DATA=SQL_DATA.concat(imported);
+      // Auto-add new agences
+      importedAgences.forEach(function(id){
+        if(!AGENCES.find(a=>a.id===id)){
+          AGENCES.push({id:id,label:id});
+          refreshLoginAgSelect();
+        }
+      });
+      renderAdminAgences();
+      var msg='<strong>'+imported.length+' articles importés</strong> depuis '+importedAgences.length+' agence(s).'+(errors.length?' <br><span style="color:var(--red)">'+errors.length+' ligne(s) ignorée(s).</span>':'');
+      showXlResult('ok',msg);
+    } catch(err){
+      showXlResult('err','Erreur lecture fichier: '+err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  input.value='';
+}
+
+function showXlResult(type,html){
+  var el=document.getElementById('xl-result');
+  el.innerHTML='<div class="toast on t-'+(type==='ok'?'ok':'err')+'" style="margin:0">'+html+'</div>';
+}
+
+// ===================================================
+// DOWNLOAD TEMPLATE EXCEL
+// ===================================================
+function downloadTemplateExcel() {
+  var wb = XLSX.utils.book_new();
+  var header=[['agence','ref','designation','famille','stock','tournant']];
+  var examples=[
+    ['AGC-NORD','AE-001','MULTI SPRAY MULTIFONCTIONS 8EN1 400ML','Aérosols',24,1],
+    ['AGC-NORD','AD-001','SOUDAFOAM PISTOLABLE 750ML','Adhésifs',45,0],
+    ['AGC-SUD','AE-001','MULTI SPRAY MULTIFONCTIONS 8EN1 400ML','Aérosols',15,1],
+  ];
+  var ws=XLSX.utils.aoa_to_sheet(header.concat(examples));
+  // Column widths
+  ws['!cols']=[{wch:14},{wch:12},{wch:50},{wch:16},{wch:8},{wch:10}];
+  XLSX.utils.book_append_sheet(wb,ws,'Articles');
+  XLSX.writeFile(wb,'modele_articles_gestostock.xlsx');
+}
+
+// ===================================================
+// SAISIE
+// ===================================================
+function buildFamilleList() {
+  var arts = SQL_DATA.filter(a=>a.agence===S.agence);
+  S.articles = arts;
+  var fams = [...new Set(arts.map(a=>a.famille))].sort();
+  S.familles = fams;
+  var sel = document.getElementById('fam-sel');
+  sel.innerHTML = '<option value="">Choisir une famille...</option>';
+  fams.forEach(function(f){
+    var cnt = arts.filter(a=>a.famille===f).length;
+    var cntT = arts.filter(a=>a.famille===f && a.tournant===1).length;
+    var o=document.createElement('option'); o.value=f;
+    o.textContent=f+' ('+cnt+' art.'+(cntT?' · '+cntT+' tournants':'')+')';
+    sel.appendChild(o);
+  });
+}
+
+function onFamChange() {
+  var f = document.getElementById('fam-sel').value;
+  var isTournant = document.getElementById('tgl-t').checked;
+  S.selFam = f || null;
+  var info = document.getElementById('fam-info');
+  if(!f){info.style.display='none';return;}
+  var arts = S.articles.filter(a=>a.famille===f);
+  var cntT = arts.filter(a=>a.tournant===1).length;
+  var affichés = isTournant ? cntT : arts.length;
+  info.style.display='';
+  info.textContent = arts.length+' articles dans cette famille dont '+cntT+' tournants. '
+    +(isTournant ? '→ Mode tournant : '+affichés+' articles affichés.' : 'Stock total SQL : '+arts.reduce((s,a)=>s+a.stock,0)+' unités.');
+}
+
+function goStep1() {
+  S.step=1;
+  show(['st1'],['st2','st3']);
+  show(['bb1'],['bb2','bb3']);
+  setDots(1);
+}
+
+function goStep2() {
+  if(!S.selFam){alert('Sélectionnez une famille.');return;}
+  S.invDate = document.getElementById('inv-dt').value;
+  S.tournant = document.getElementById('tgl-t').checked;
+  // FREEZE stocks at this moment (only if new inventory)
+  if(!S.editId || Object.keys(S.frozenStocks).length===0) {
+    S.frozenStocks = {};
+    S.articles.filter(a=>a.famille===S.selFam).forEach(function(a){
+      S.frozenStocks[a.ref] = a.stock;
+    });
+  }
+  buildTable();
+  S.step=2;
+  show(['st2'],['st1','st3']);
+  show(['bb2'],['bb1','bb3']);
+  setDots(2);
+  document.getElementById('st2-fam-badge').textContent=S.selFam;
+  document.getElementById('st2-tournant-badge').style.display=S.tournant?'':'none';
+}
+
+function buildTable() {
+  // Si tournant coché → n'afficher que les articles marqués tournant=1
+  var allArts = S.articles.filter(a=>a.famille===S.selFam);
+  var arts = S.tournant ? allArts.filter(a=>a.tournant===1) : allArts;
+  var tbody = document.getElementById('inv-body');
+  tbody.innerHTML='';
+  if(!arts.length){
+    tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;font-size:13px">Aucun article tournant dans cette famille</td></tr>';
+    updMetrics(arts);
+    return;
+  }
+  arts.forEach(function(a){
+    var frozenStock = S.frozenStocks[a.ref] !== undefined ? S.frozenStocks[a.ref] : a.stock;
+    var v = S.vals[a.ref] !== undefined ? S.vals[a.ref] : '';
+    var c = S.coms[a.ref] || '';
+    var e = v!=='' ? parseInt(v)-frozenStock : null;
+    var eCls = e===null?'ev-z':e>0?'ev-p':e<0?'ev-m':'ev-z';
+    var eTxt = e!==null?(e>0?'+':'')+e:'—';
+    var tr = document.createElement('tr');
+    if(e!==null&&e>0) tr.classList.add('ep');
+    if(e!==null&&e<0) tr.classList.add('em');
+    tr.id='tr-'+a.ref;
+    tr.innerHTML=
+      '<td style="font-family:monospace;font-size:11px;white-space:nowrap">'+a.ref+(a.tournant?'<br><span class="badge b-amber" style="font-size:9px;padding:1px 5px">T</span>':'')+'</td>'+
+      '<td style="max-width:120px;font-size:12px;line-height:1.3">'+a.des+'</td>'+
+      '<td style="text-align:right;font-weight:600">'+frozenStock+'</td>'+
+      '<td><input class="iqty'+(v!==''?' ok':'')+'" id="q-'+a.ref+'" type="number" min="0" value="'+(v!==''?v:'')+'" placeholder="—" oninput="updRow(\''+a.ref+'\','+frozenStock+')"/></td>'+
+      '<td class="ev"><span class="'+eCls+'" id="e-'+a.ref+'">'+eTxt+'</span></td>'+
+      '<td><input class="icom" id="c-'+a.ref+'" value="'+c+'" placeholder="Note..."/></td>';
+    tbody.appendChild(tr);
+  });
+  updMetrics(arts);
+}
+
+function updRow(ref, frozenStock) {
+  var inp = document.getElementById('q-'+ref);
+  var v = inp.value;
+  S.vals[ref] = v!=='' ? parseInt(v) : undefined;
+  inp.classList.toggle('ok', v!=='');
+  var eEl = document.getElementById('e-'+ref);
+  var tr = document.getElementById('tr-'+ref);
+  tr.classList.remove('ep','em');
+  if(v!==''){
+    var e=parseInt(v)-frozenStock;
+    eEl.textContent=(e>0?'+':'')+e;
+    eEl.className='ev '+(e>0?'ev-p':e<0?'ev-m':'ev-z');
+    if(e>0) tr.classList.add('ep');
+    if(e<0) tr.classList.add('em');
+  } else { eEl.textContent='—'; eEl.className='ev ev-z'; }
+  var allArts = S.articles.filter(a=>a.famille===S.selFam);
+  var arts = S.tournant ? allArts.filter(a=>a.tournant===1) : allArts;
+  updMetrics(arts);
+}
+
+function updMetrics(arts) {
+  if(!arts) {
+    var allArts = S.articles.filter(a=>a.famille===S.selFam);
+    arts = S.tournant ? allArts.filter(a=>a.tournant===1) : allArts;
+  }
+  var s=0,p=0,m=0;
+  arts.forEach(function(a){
+    var v=S.vals[a.ref]; if(v!==undefined){s++;var e=v-(S.frozenStocks[a.ref]!==undefined?S.frozenStocks[a.ref]:a.stock);if(e>0)p++;if(e<0)m++;}
+  });
+  document.getElementById('m-s').textContent=s;
+  document.getElementById('m-p').textContent=p;
+  document.getElementById('m-m').textContent=m;
+  var pct=arts.length?Math.round(s/arts.length*100):0;
+  document.getElementById('pb-lbl').textContent=s+' / '+arts.length+' articles'+(S.tournant?' (tournants)':'');
+  document.getElementById('pb-pct').textContent=pct+'%';
+  document.getElementById('pb-fill').style.width=pct+'%';
+}
+
+function syncComs() {
+  var allArts = S.articles.filter(a=>a.famille===S.selFam);
+  var arts = S.tournant ? allArts.filter(a=>a.tournant===1) : allArts;
+  arts.forEach(function(a){
+    var c=document.getElementById('c-'+a.ref); if(c) S.coms[a.ref]=c.value;
+  });
+}
+
+function saveEncours() {
+  syncComs();
+  var fam = S.selFam;
+  var allArts = S.articles.filter(a=>a.famille===fam);
+  var arts = S.tournant ? allArts.filter(a=>a.tournant===1) : allArts;
+  var s=arts.filter(a=>S.vals[a.ref]!==undefined).length;
+  if(S.editId){
+    var idx=S.inventaires.findIndex(i=>i.id===S.editId);
+    if(idx>=0){
+      Object.assign(S.inventaires[idx],{vals:Object.assign({},S.vals),coms:Object.assign({},S.coms),frozenStocks:Object.assign({},S.frozenStocks),savedAt:new Date().toISOString()});
+    }
+  } else {
+    var inv=buildInvObj('en-cours');
+    S.inventaires.push(inv);
+    S.editId=inv.id;
+  }
+  floatToast('Inventaire enregistré ✓');
+  renderEncours();
+}
+
+function buildInvObj(status) {
+  return {
+    id:'INV-'+Date.now().toString(36).toUpperCase(),
+    agence:S.agence, agLabel:S.agLabel,
+    user:S.user.login, userName:S.user.nom,
+    famId:S.selFam, date:S.invDate, tournant:S.tournant,
+    vals:Object.assign({},S.vals), coms:Object.assign({},S.coms),
+    frozenStocks:Object.assign({},S.frozenStocks),
+    status:status,
+    createdAt:new Date().toISOString(), savedAt:new Date().toISOString()
+  };
+}
+
+function goStep3() {
+  syncComs();
+  var allArts=S.articles.filter(a=>a.famille===S.selFam);
+  var arts=S.tournant ? allArts.filter(a=>a.tournant===1) : allArts;
+  var s=0,p=0,m=0,ecarts=[];
+  arts.forEach(function(a){
+    var v=S.vals[a.ref]; var fs=S.frozenStocks[a.ref]!==undefined?S.frozenStocks[a.ref]:a.stock;
+    if(v!==undefined){s++;var e=v-fs;if(e>0)p++;if(e<0)m++;if(e!==0)ecarts.push({ref:a.ref,des:a.des,fs:fs,v:v,e:e});}
+  });
+  ecarts.sort((a,b)=>Math.abs(b.e)-Math.abs(a.e));
+  document.getElementById('v-title').textContent=S.selFam+' — '+fmtD(S.invDate);
+  document.getElementById('v-sub').textContent=S.agLabel+(S.tournant?' · Tournant':'')+(S.user?' · '+S.user.nom:'');
+  document.getElementById('v-cpt').textContent=s;
+  document.getElementById('v-tot').textContent=arts.length;
+  document.getElementById('v-p').textContent=p;
+  document.getElementById('v-m').textContent=m;
+  var el=document.getElementById('v-ecarts'); el.innerHTML='';
+  if(!ecarts.length){el.innerHTML='<div style="font-size:13px;color:var(--text2);text-align:center;padding:10px">Aucun écart</div>';}
+  ecarts.slice(0,5).forEach(function(e){
+    var r=document.createElement('div');
+    r.style.cssText='display:flex;justify-content:space-between;padding:6px 0;border-bottom:0.5px solid var(--bord);font-size:12px';
+    r.innerHTML='<span style="color:var(--text2)">'+e.ref+' — '+e.des.substring(0,30)+'</span>'+'<span style="font-weight:700;color:'+(e.e>0?'var(--teal)':'var(--red)')+'">'+( e.e>0?'+':'')+e.e+'</span>';
+    el.appendChild(r);
+  });
+  S.step=3;
+  show(['st3'],['st1','st2']);
+  show(['bb3'],['bb1','bb2']);
+  setDots(3);
+}
+
+function cloture() {
+  syncComs();
+  var commentG=document.getElementById('v-com').value;
+  if(S.editId){
+    var idx=S.inventaires.findIndex(i=>i.id===S.editId);
+    if(idx>=0){Object.assign(S.inventaires[idx],{vals:Object.assign({},S.vals),coms:Object.assign({},S.coms),frozenStocks:Object.assign({},S.frozenStocks),commentG:commentG,status:'cloture',closedAt:new Date().toISOString()});}
+  } else {
+    var inv=buildInvObj('cloture'); inv.commentG=commentG; inv.closedAt=new Date().toISOString();
+    S.inventaires.push(inv);
+  }
+  S.editId=null;
+  resetSaisie();
+  tab('clotures');
+  setTimeout(()=>toast('t-clotures','Inventaire clôturé avec succès','ok'),100);
+}
+
+function resetSaisie() {
+  S.selFam=null; S.vals={}; S.coms={}; S.editId=null; S.frozenStocks={}; S.tournant=false;
+  document.getElementById('fam-sel').value='';
+  document.getElementById('fam-info').style.display='none';
+  document.getElementById('tgl-t').checked=false;
+  document.getElementById('v-com').value='';
+  goStep1();
+}
+
+// ===================================================
+// EN COURS
+// ===================================================
+function renderEncours() {
+  var el=document.getElementById('encours-list');
+  var items=S.inventaires.filter(i=>i.status==='en-cours' && i.agence===S.agence);
+  if(!items.length){el.innerHTML='<div class="empty"><div class="ei">📋</div><p>Aucun inventaire en cours</p></div>';return;}
+  el.innerHTML='';
+  items.forEach(function(inv){
+    var allArts=S.articles.filter(a=>a.famille===inv.famId);
+    var arts=inv.tournant?allArts.filter(a=>a.tournant===1):allArts;
+    var s=arts.filter(a=>inv.vals[a.ref]!==undefined).length;
+    var tot=arts.length;
+    var pct=tot?Math.round(s/tot*100):0;
+    var d=document.createElement('div'); d.className='ii';
+    d.innerHTML='<div class="ii-top"><div class="ii-title">'+inv.famId+'</div>'+
+      '<span class="badge b-blue">'+pct+'%</span></div>'+
+      '<div class="ii-sub">'+inv.agLabel+' · '+fmtD(inv.date)+' · '+inv.userName+
+        (inv.tournant?' · <span class="badge b-amber">Tournant</span>':'')+'</div>'+
+      '<div style="margin:8px 0 4px"><div class="pb"><div class="pb-fill" style="width:'+pct+'%"></div></div></div>'+
+      '<div class="ii-foot">'+
+        '<button class="btn btn-p btn-sm" onclick="resumeInv(\''+inv.id+'\')">Reprendre</button>'+
+        '<button class="btn btn-s btn-sm" onclick="delInv(\''+inv.id+'\')">Supprimer</button>'+
+        '<span style="font-size:11px;color:var(--text3)">'+s+'/'+tot+' art.</span>'+
+      '</div>';
+    el.appendChild(d);
+  });
+}
+
+function resumeInv(id) {
+  var inv=S.inventaires.find(i=>i.id===id); if(!inv) return;
+  S.selFam=inv.famId; S.invDate=inv.date; S.tournant=inv.tournant;
+  S.vals=Object.assign({},inv.vals); S.coms=Object.assign({},inv.coms);
+  S.frozenStocks=Object.assign({},inv.frozenStocks);
+  S.editId=id;
+  document.getElementById('fam-sel').value=inv.famId;
+  document.getElementById('inv-dt').value=inv.date;
+  document.getElementById('tgl-t').checked=inv.tournant;
+  onFamChange();
+  tab('saisie');
+  goStep2();
+}
+
+function delInv(id) {
+  if(!confirm('Supprimer cet inventaire ?')) return;
+  S.inventaires=S.inventaires.filter(i=>i.id!==id);
+  renderEncours();
+}
+
+// ===================================================
+// CLÔTURÉS
+// ===================================================
+function renderClotures() {
+  var el=document.getElementById('clotures-list');
+  var items=S.inventaires.filter(i=>i.status==='cloture' && i.agence===S.agence).sort((a,b)=>b.closedAt.localeCompare(a.closedAt));
+  if(!items.length){el.innerHTML='<div class="empty"><div class="ei">✅</div><p>Aucun inventaire clôturé</p></div>';return;}
+  el.innerHTML='';
+  items.forEach(function(inv){
+    var allArts=S.articles.filter(a=>a.famille===inv.famId);
+    var arts=inv.tournant?allArts.filter(a=>a.tournant===1):allArts;
+    var s=arts.filter(a=>inv.vals[a.ref]!==undefined).length;
+    var ecarts=arts.filter(a=>inv.vals[a.ref]!==undefined && inv.vals[a.ref]!==(inv.frozenStocks[a.ref]!==undefined?inv.frozenStocks[a.ref]:a.stock)).length;
+    var d=document.createElement('div'); d.className='ii';
+    d.innerHTML='<div class="ii-top"><div class="ii-title">'+inv.famId+'</div><span class="badge b-teal">Clôturé</span></div>'+
+      '<div class="ii-sub">'+inv.agLabel+' · '+fmtD(inv.date)+' · '+inv.userName+'</div>'+
+      '<div class="ii-foot">'+
+        '<span class="badge b-gray">'+s+' comptés</span>'+
+        '<span class="badge '+(ecarts>0?'b-amber':'b-teal')+'">'+ecarts+' écarts</span>'+
+        (inv.tournant?'<span class="badge b-amber">Tournant</span>':'')+
+        '<button class="btn btn-s btn-sm" onclick="showRapport(\''+inv.id+'\')">Voir / PDF</button>'+
+      '</div>';
+    el.appendChild(d);
+  });
+}
+
+// ===================================================
+// RAPPORT & PDF
+// ===================================================
+function showRapport(id) {
+  var inv=S.inventaires.find(i=>i.id===id); if(!inv) return;
+  var allArts=S.articles.filter(a=>a.famille===inv.famId);
+  var arts=inv.tournant?allArts.filter(a=>a.tournant===1):allArts;
+  document.getElementById('m-title').textContent=inv.famId+' — '+fmtD(inv.date);
+  var s=0,p=0,m=0;
+  arts.forEach(function(a){
+    var v=inv.vals[a.ref]; var fs=inv.frozenStocks[a.ref]!==undefined?inv.frozenStocks[a.ref]:a.stock;
+    if(v!==undefined){s++;var e=v-fs;if(e>0)p++;if(e<0)m++;}
+  });
+  var html='<div class="rh"><h2>'+inv.famId+'</h2><p>'+inv.agLabel+' · '+fmtD(inv.date)+(inv.tournant?' · Tournant':'')+'<br>'+inv.userName+'</p></div>';
+  html+='<div class="kgrid"><div class="kpi"><div class="kl">Comptés</div><div class="kv">'+s+'</div></div>'+
+    '<div class="kpi"><div class="kl">Total</div><div class="kv">'+arts.length+'</div></div>'+
+    '<div class="kpi"><div class="kl">Écarts +</div><div class="kv pos">'+p+'</div></div>'+
+    '<div class="kpi"><div class="kl">Écarts −</div><div class="kv neg">'+m+'</div></div></div>';
+  html+='<div class="tw"><table><thead><tr><th>Réf.</th><th>Désignation</th><th>Stock figé</th><th>Relevé</th><th>Écart</th><th>Note</th></tr></thead><tbody>';
+  arts.forEach(function(a){
+    var v=inv.vals[a.ref]; var fs=inv.frozenStocks[a.ref]!==undefined?inv.frozenStocks[a.ref]:a.stock;
+    var c=inv.coms[a.ref]||'';
+    if(v===undefined){
+      html+='<tr style="opacity:.4"><td style="font-family:monospace;font-size:11px">'+a.ref+'</td><td style="font-size:12px">'+a.des.substring(0,35)+'</td><td style="text-align:right">'+fs+'</td><td style="text-align:center;color:var(--text3)">—</td><td style="color:var(--text3)">—</td><td></td></tr>';
+    } else {
+      var e=v-fs;
+      html+='<tr style="'+(e>0?'background:rgba(225,245,238,.4)':e<0?'background:rgba(252,235,235,.4)':'')+'">';
+      html+='<td style="font-family:monospace;font-size:11px">'+a.ref+'</td><td style="font-size:12px">'+a.des.substring(0,35)+'</td>'+
+        '<td style="text-align:right">'+fs+'</td><td style="text-align:right;font-weight:600">'+v+'</td>'+
+        '<td style="font-weight:700;color:'+(e>0?'var(--teal)':e<0?'var(--red)':'var(--text3)')+'">'+(e>0?'+':'')+e+'</td>'+
+        '<td style="font-size:12px;color:var(--text2)">'+c+'</td></tr>';
+    }
+  });
+  html+='</tbody></table></div>';
+  if(inv.commentG) html+='<div style="margin-top:10px;padding:10px;background:var(--bg2);border-radius:var(--r);font-size:13px;color:var(--text2)">'+inv.commentG+'</div>';
+  document.getElementById('m-body').innerHTML=html;
+  document.getElementById('m-actions').innerHTML=
+    '<button class="btn btn-p btn-sm" onclick="genPDF(\''+id+'\')">Télécharger PDF</button>'+
+    '<button class="btn btn-s btn-sm" onclick="closeModalNow()">Fermer</button>';
+  document.getElementById('modal').classList.add('on');
+}
+
+function genPDF(id) {
+  var inv=S.inventaires.find(i=>i.id===id); if(!inv) return;
+  var allArts=S.articles.filter(a=>a.famille===inv.famId);
+  var arts=inv.tournant?allArts.filter(a=>a.tournant===1):allArts;
+  var {jsPDF}=window.jspdf;
+  var doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  var B=[24,95,165],T=[29,158,117],R=[226,75,74],G=[95,94,90];
+  var W=210,M=14;
+  doc.setFillColor(...B); doc.rect(0,0,W,26,'F');
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(15);doc.setFont(undefined,'bold');
+  doc.text('GestoStock — Rapport d\'inventaire',M,11);
+  doc.setFontSize(8);doc.setFont(undefined,'normal');
+  doc.text(inv.agLabel+' · '+fmtD(inv.date)+(inv.tournant?' · Tournant':''),M,18);
+  doc.text('Opérateur: '+inv.userName+' · Réf: '+inv.id,M,23);
+  doc.text('Généré le '+new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}),W-M,23,{align:'right'});
+  doc.setTextColor(...G);doc.setFontSize(13);doc.setFont(undefined,'bold');
+  doc.text(inv.famId,M,35);
+  var s=0,p=0,m=0;
+  arts.forEach(function(a){var v=inv.vals[a.ref];var fs=inv.frozenStocks[a.ref]!==undefined?inv.frozenStocks[a.ref]:a.stock;if(v!==undefined){s++;var e=v-fs;if(e>0)p++;if(e<0)m++;}});
+  var kpis=[['Comptés',s,'gray'],['Total',arts.length,'gray'],['Écarts +',p,'teal'],['Écarts −',m,'red']];
+  var bw=44,bh=14,by=40;
+  kpis.forEach(function(k,i){
+    doc.setFillColor(245,244,240);doc.roundedRect(M+i*(bw+2),by,bw,bh,2,2,'F');
+    doc.setTextColor(...G);doc.setFontSize(7);doc.setFont(undefined,'normal');
+    doc.text(k[0],M+i*(bw+2)+bw/2,by+4.5,{align:'center'});
+    var c=k[2]==='teal'?T:k[2]==='red'?R:G;
+    doc.setTextColor(...c);doc.setFontSize(13);doc.setFont(undefined,'bold');
+    doc.text(''+k[1],M+i*(bw+2)+bw/2,by+12,{align:'center'});
+  });
+  var head=[['Référence','Désignation','Stock figé','Relevé','Écart','Commentaire']];
+  var body=[];
+  arts.forEach(function(a){
+    var v=inv.vals[a.ref]; if(v===undefined) return;
+    var fs=inv.frozenStocks[a.ref]!==undefined?inv.frozenStocks[a.ref]:a.stock;
+    var c=inv.coms[a.ref]||''; var e=v-fs;
+    body.push([a.ref,a.des.length>38?a.des.substring(0,38)+'…':a.des,fs,v,(e>0?'+':'')+e,c]);
+  });
+  doc.autoTable({
+    head:head, body:body, startY:60, margin:{left:M,right:M},
+    styles:{fontSize:8,cellPadding:2.5},
+    headStyles:{fillColor:B,textColor:255,fontStyle:'bold'},
+    columnStyles:{0:{cellWidth:22},1:{cellWidth:70},2:{cellWidth:20,halign:'right'},3:{cellWidth:18,halign:'right'},4:{cellWidth:16,halign:'right'},5:{cellWidth:28}},
+    didParseCell:function(d){if(d.section==='body'&&d.column.index===4){var v=parseFloat(d.cell.text[0]);if(!isNaN(v)){if(v>0)d.cell.styles.textColor=T;else if(v<0)d.cell.styles.textColor=R;}}}
+  });
+  if(inv.commentG){
+    var y=doc.lastAutoTable?doc.lastAutoTable.finalY+6:200;
+    doc.setFillColor(245,244,240);doc.roundedRect(M,y,W-2*M,12,2,2,'F');
+    doc.setTextColor(...G);doc.setFontSize(8);doc.setFont(undefined,'normal');
+    doc.text('Note: '+inv.commentG,M+4,y+8);
+  }
+  var nb=doc.internal.getNumberOfPages();
+  for(var i=1;i<=nb;i++){doc.setPage(i);doc.setFillColor(245,244,240);doc.rect(0,287,W,10,'F');doc.setTextColor(...G);doc.setFontSize(7);doc.text('GestoStock · '+inv.agLabel,M,293);doc.text('Page '+i+'/'+nb,W-M,293,{align:'right'});}
+  doc.save('inventaire_'+inv.famId+'_'+inv.date+'.pdf');
+}
+
+// ===================================================
+// EXCEL EXPORT
+// ===================================================
+function exportXLS() {
+  var d1=document.getElementById('r-d1').value, d2=document.getElementById('r-d2').value;
+  var ag=document.getElementById('r-ag').value;
+  if(!d1||!d2){toast('t-rapports','Sélectionnez une période','err');return;}
+  var items=S.inventaires.filter(i=>i.status==='cloture'&&i.date>=d1&&i.date<=d2&&(!ag||i.agence===ag));
+  if(!items.length){toast('t-rapports','Aucun inventaire clôturé sur cette période','err');return;}
+  var wb=XLSX.utils.book_new();
+  var recap=[['ID','Agence','Famille','Date','Type','Opérateur','Comptés','Total','Écarts+','Écarts-']];
+  items.forEach(function(inv){
+    var allArts=SQL_DATA.filter(a=>a.agence===inv.agence&&a.famille===inv.famId);
+    var arts=inv.tournant?allArts.filter(a=>a.tournant===1):allArts;
+    var s=0,p=0,m=0;
+    arts.forEach(function(a){var v=inv.vals[a.ref];var fs=inv.frozenStocks[a.ref]!==undefined?inv.frozenStocks[a.ref]:a.stock;if(v!==undefined){s++;var e=v-fs;if(e>0)p++;if(e<0)m++;}});
+    recap.push([inv.id,inv.agLabel,inv.famId,fmtD(inv.date),inv.tournant?'Tournant':'Complet',inv.userName,s,arts.length,p,m]);
+  });
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(recap),'Récapitulatif');
+  var detail=[['ID Inventaire','Agence','Famille','Date','Référence','Désignation','Stock figé','Relevé','Écart','Commentaire']];
+  items.forEach(function(inv){
+    var allArts=SQL_DATA.filter(a=>a.agence===inv.agence&&a.famille===inv.famId);
+    var arts=inv.tournant?allArts.filter(a=>a.tournant===1):allArts;
+    arts.forEach(function(a){
+      var v=inv.vals[a.ref]; if(v===undefined) return;
+      var fs=inv.frozenStocks[a.ref]!==undefined?inv.frozenStocks[a.ref]:a.stock;
+      var e=v-fs; var c=inv.coms[a.ref]||'';
+      detail.push([inv.id,inv.agLabel,inv.famId,fmtD(inv.date),a.ref,a.des,fs,v,e,c]);
+    });
+  });
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(detail),'Détail articles');
+  XLSX.writeFile(wb,'rapport_inventaire_'+d1+'_'+d2+'.xlsx');
+  toast('t-rapports','Export généré avec succès','ok');
+}
+
+function renderStats() {
+  var el=document.getElementById('rpt-stats');
+  var items=S.inventaires.filter(i=>i.status==='cloture');
+  if(!items.length){el.innerHTML='<div style="font-size:13px;color:var(--text2);text-align:center;padding:16px">Aucun inventaire clôturé</div>';return;}
+  var byFam={};
+  items.forEach(function(inv){
+    if(!byFam[inv.famId]) byFam[inv.famId]={nb:0,ec:0};
+    byFam[inv.famId].nb++;
+    var allArts=SQL_DATA.filter(a=>a.agence===inv.agence&&a.famille===inv.famId);
+    var arts=inv.tournant?allArts.filter(a=>a.tournant===1):allArts;
+    arts.forEach(function(a){var v=inv.vals[a.ref];var fs=inv.frozenStocks[a.ref]!==undefined?inv.frozenStocks[a.ref]:a.stock;if(v!==undefined&&v!==fs)byFam[inv.famId].ec++;});
+  });
+  var html='';
+  Object.entries(byFam).forEach(([n,d])=>{
+    html+='<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--bord);font-size:13px">'+
+      '<span>'+n+'</span><span style="display:flex;gap:7px"><span class="badge b-blue">'+d.nb+' inv.</span><span class="badge '+(d.ec?'b-amber':'b-teal')+'">'+d.ec+' écarts</span></span></div>';
+  });
+  el.innerHTML=html;
+  var now=new Date(),y=now.getFullYear(),m=String(now.getMonth()+1).padStart(2,'0');
+  if(!document.getElementById('r-d1').value) document.getElementById('r-d1').value=y+'-'+m+'-01';
+  if(!document.getElementById('r-d2').value) document.getElementById('r-d2').value=now.toISOString().split('T')[0];
+}
+
+// ===================================================
+// HELPERS
+// ===================================================
+function setDots(n){
+  ['d1','d2','d3'].forEach(function(id,i){
+    var el=document.getElementById(id);
+    el.className='dot'+(i+1<n?' done':i+1===n?' act':'');
+  });
+}
+function show(on,off){
+  on.forEach(id=>{var e=document.getElementById(id);if(e)e.style.display='';});
+  off.forEach(id=>{var e=document.getElementById(id);if(e)e.style.display='none';});
+}
+function fmtD(d){if(!d)return'—';var p=d.split('-');return p[2]+'/'+p[1]+'/'+p[0];}
+function toast(id,msg,type){
+  var t=document.getElementById(id);
+  t.textContent=(type==='ok'?'✓ ':'')+msg;
+  t.className='toast on t-'+(type==='ok'?'ok':'err');
+  setTimeout(()=>t.classList.remove('on'),3500);
+}
+function toast2(el,msg,type){
+  el.textContent=msg; el.className='toast on t-'+(type==='ok'?'ok':'err');
+  setTimeout(()=>el.classList.remove('on'),3500);
+}
+function floatToast(msg){
+  var b=document.createElement('div');
+  b.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--teal);color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;font-weight:600;white-space:nowrap;z-index:500;box-shadow:0 2px 8px rgba(0,0,0,.2)';
+  b.textContent=msg; document.body.appendChild(b);
+  setTimeout(()=>b.remove(),2200);
+}
+function closeModal(e){if(e.target===document.getElementById('modal'))closeModalNow();}
+function closeModalNow(){document.getElementById('modal').classList.remove('on');}
+</script>
+</body>
+</html>
