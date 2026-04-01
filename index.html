@@ -431,6 +431,1116 @@ tr.em td{background:rgba(252,235,235,.35)}
 </div>
 
 <script>
+
+// ================================================================
+// SUPABASE CONFIG
+// ================================================================
+var SB_URL = 'https://jagbixjnglhohftmsfwk.supabase.co';
+var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImphZ2JpeGpuZ2xob2hmdG1zZndrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0Mjg0NzcsImV4cCI6MjA5MDAwNDQ3N30.M0tfxUnTV1qRBgBcLoTp8lUBNZ6tjR-1v418N0cynNc';
+var H = {'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'};
+
+async function sbGet(t,q){var r=await fetch(SB_URL+'/rest/v1/'+t+'?'+(q||''),{headers:H});if(!r.ok)throw new Error(await r.text());return r.json();}
+async function sbPost(t,b){var r=await fetch(SB_URL+'/rest/v1/'+t,{method:'POST',headers:H,body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();}
+async function sbPatch(t,q,b){var r=await fetch(SB_URL+'/rest/v1/'+t+'?'+q,{method:'PATCH',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();}
+async function sbDelete(t,q){var r=await fetch(SB_URL+'/rest/v1/'+t+'?'+q,{method:'DELETE',headers:H});if(!r.ok)throw new Error(await r.text());}
+async function sbUpsert(t,b){var r=await fetch(SB_URL+'/rest/v1/'+t,{method:'POST',headers:{...H,'Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();}
+
+// ================================================================
+// ÉTAT SESSION (mémoire uniquement)
+// ================================================================
+var S = {
+  user:null, agence:null, agLabel:null, isAdmin:false,
+  agences:[], articles:[],
+  selFam:null, tournant:false, invDate:'',
+  frozenStocks:{}, vals:{}, coms:{},
+  step:1, editId:null, pwdTargetId:null
+};
+
+function activeArts(){
+  var all=S.articles.filter(a=>a.agence_id===S.agence&&a.famille===S.selFam);
+  return S.tournant?all.filter(a=>a.tournant===1):all;
+}
+
+// ================================================================
+// INIT
+// ================================================================
+window.onload=async function(){
+  document.getElementById('inv-dt').value=new Date().toISOString().split('T')[0];
+  await loadAgencesLogin();
+};
+
+async function loadAgencesLogin(){
+  try{
+    var ags=await sbGet('agences','order=label');
+    S.agences=ags;
+    var sel=document.getElementById('l-ag');
+    sel.innerHTML='<option value="">Sélectionner une agence...</option><option value="__ADMIN__">🔐 Administration</option>';
+    ags.forEach(function(a){var o=document.createElement('option');o.value=a.id;o.textContent=a.label;sel.appendChild(o);});
+    sel.onchange=function(){onAgChange();};
+    var rsel=document.getElementById('r-ag');
+    rsel.innerHTML='<option value="">Toutes</option>';
+    ags.forEach(function(a){var o=document.createElement('option');o.value=a.id;o.textContent=a.label;rsel.appendChild(o);});
+  }catch(e){
+    var err=document.getElementById('l-err');
+    err.textContent='⚠ Erreur connexion Supabase : '+e.message;
+    err.classList.add('on');
+  }
+}
+
+async function onAgChange(){
+  var ag=document.getElementById('l-ag').value;
+  var sel=document.getElementById('l-usr');
+  sel.innerHTML='<option value="">—</option>';
+  if(ag==='__ADMIN__'){var o=document.createElement('option');o.value='admin';o.textContent='Administrateur';sel.appendChild(o);return;}
+  if(!ag)return;
+  try{
+    var users=await sbGet('users','agence_id=eq.'+ag+'&is_admin=eq.false&order=nom&select=login,nom');
+    users.forEach(function(u){var o=document.createElement('option');o.value=u.login;o.textContent=u.nom;sel.appendChild(o);});
+  }catch(e){}
+}
+
+// ================================================================
+// LOGIN / LOGOUT
+// ================================================================
+async function doLogin(){
+  var ag=document.getElementById('l-ag').value;
+  var usr=document.getElementById('l-usr').value;
+  var pwd=document.getElementById('l-pwd').value;
+  var err=document.getElementById('l-err');
+  if(!ag){toast2(err,'Sélectionnez une agence','err');return;}
+  if(!usr){toast2(err,'Sélectionnez un utilisateur','err');return;}
+  if(!pwd){toast2(err,'Saisissez le mot de passe','err');return;}
+  var btn=document.getElementById('btn-login');
+  btn.disabled=true;btn.textContent='Connexion...';
+  try{
+    if(ag==='__ADMIN__'&&usr==='admin'){
+      var admins=await sbGet('users','login=eq.admin&is_admin=eq.true');
+      if(!admins.length||admins[0].pwd!==pwd){toast2(err,'Mot de passe incorrect','err');btn.disabled=false;btn.textContent='Se connecter';return;}
+      S.user=admins[0];S.agence='__ADMIN__';S.agLabel='Administration';S.isAdmin=true;
+      await enterApp();tab('admin');
+    }else{
+      var users=await sbGet('users','login=eq.'+encodeURIComponent(usr)+'&agence_id=eq.'+ag+'&is_admin=eq.false');
+      if(!users.length||users[0].pwd!==pwd){toast2(err,'Mot de passe incorrect','err');btn.disabled=false;btn.textContent='Se connecter';return;}
+      S.user=users[0];S.agence=ag;S.isAdmin=false;
+      S.agLabel=(S.agences.find(a=>a.id===ag)||{}).label||ag;
+      await enterApp();tab('saisie');
+    }
+  }catch(e){toast2(err,'Erreur : '+e.message,'err');}
+  btn.disabled=false;btn.textContent='Se connecter';
+}
+
+async function enterApp(){
+  document.getElementById('scr-login').classList.remove('on');
+  document.getElementById('main-nav').style.display='flex';
+  document.getElementById('nb-admin').style.display=S.isAdmin?'':'none';
+  if(!S.isAdmin){
+    var arts=await sbGet('articles','agence_id=eq.'+S.agence+'&order=famille,ref');
+    S.articles=arts;
+    buildFamilleList();
+    document.getElementById('s-aglab').textContent=S.agLabel;
+    document.getElementById('s-userlab').textContent=S.user.nom;
+    document.getElementById('ec-lab').textContent=S.agLabel;
+    document.getElementById('cl-lab').textContent=S.agLabel;
+  }else{
+    await renderAdminPage();
+  }
+}
+
+function logout(){
+  S.user=null;S.agence=null;S.isAdmin=false;S.articles=[];
+  document.getElementById('main-nav').style.display='none';
+  document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));
+  document.getElementById('scr-login').classList.add('on');
+  document.getElementById('l-pwd').value='';
+  document.getElementById('l-ag').value='';
+  document.getElementById('l-usr').innerHTML='<option value="">—</option>';
+  resetSaisie();
+  loadAgencesLogin();
+}
+
+// ================================================================
+// TABS
+// ================================================================
+function tab(name){
+  document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));
+  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('on'));
+  document.getElementById('scr-'+name).classList.add('on');
+  document.getElementById('nb-'+name).classList.add('on');
+  if(name==='encours')renderEncours();
+  if(name==='clotures')renderClotures();
+  if(name==='rapports')renderStats();
+  if(name==='admin')renderAdminPage();
+}
+
+// ================================================================
+// ADMIN
+// ================================================================
+async function renderAdminPage(){
+  try{
+    var[ags,users]=await Promise.all([sbGet('agences','order=label'),sbGet('users','is_admin=eq.false&order=nom')]);
+    S.agences=ags;S._adminUsers=users;
+  }catch(e){toast('t-admin','Erreur chargement : '+e.message,'err');return;}
+  // Agences
+  var elAg=document.getElementById('adm-agences');
+  elAg.innerHTML=S.agences.length?S.agences.map(function(ag){
+    var nb=(S._adminUsers||[]).filter(u=>u.agence_id===ag.id).length;
+    return '<div class="user-row"><div class="uinfo"><div class="uname"><span class="ag-badge">'+ag.id+'</span> '+ag.label+'</div><div class="umeta">'+nb+' utilisateur(s)</div></div>'+
+      '<button class="btn btn-s btn-sm" onclick="deleteAgence(''+ag.id+'')" style="color:var(--red);border-color:var(--red)">Supprimer</button></div>';
+  }).join(''):'<div style="font-size:13px;color:var(--text2);padding:6px 0">Aucune agence.</div>';
+  // Users
+  var elU=document.getElementById('adm-users');
+  var html='';
+  S.agences.forEach(function(ag){
+    var list=(S._adminUsers||[]).filter(u=>u.agence_id===ag.id);
+    if(!list.length)return;
+    html+='<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 4px">'+ag.label+' <span class="ag-badge">'+ag.id+'</span></div>';
+    list.forEach(function(u){
+      html+='<div class="user-row"><div class="uinfo"><div class="uname">'+u.nom+'</div><div class="umeta">@'+u.login+'</div></div>'+
+        '<div class="uactions"><button class="btn btn-s btn-sm" onclick="openPwdModal(''+u.id+'',''+u.nom.replace(/'/g,"\'")+''  ,''+u.login+'')">🔑 MDP</button>'+
+        '<button class="btn btn-s btn-sm" onclick="deleteUser(''+u.id+'',''+u.nom.replace(/'/g,"\'")+  '')" style="color:var(--red);border-color:var(--red)">✕</button></div></div>';
+    });
+  });
+  elU.innerHTML=html||'<div style="font-size:13px;color:var(--text2);padding:6px 0">Aucun utilisateur.</div>';
+  // Select agence form
+  var sel=document.getElementById('nu-ag');
+  sel.innerHTML='<option value="">-- Choisir --</option>';
+  S.agences.forEach(function(a){var o=document.createElement('option');o.value=a.id;o.textContent=a.label+' ('+a.id+')';sel.appendChild(o);});
+}
+
+async function addAgence(){
+  var id=document.getElementById('new-ag-id').value.trim().toUpperCase();
+  var label=document.getElementById('new-ag-lbl').value.trim();
+  if(!id||!label){toast('t-admin','Renseignez le code et le nom','err');return;}
+  try{
+    await sbPost('agences',{id,label});
+    document.getElementById('new-ag-id').value='';
+    document.getElementById('new-ag-lbl').value='';
+    await renderAdminPage();
+    await loadAgencesLogin();
+    toast('t-admin','Agence '+label+' créée','ok');
+  }catch(e){toast('t-admin','Erreur (code déjà pris ?) : '+e.message,'err');}
+}
+
+async function deleteAgence(id){
+  var ag=S.agences.find(a=>a.id===id);
+  if(!ag||!confirm('Supprimer "'+ag.label+'" et tous ses utilisateurs/articles ?'))return;
+  try{await sbDelete('agences','id=eq.'+id);await renderAdminPage();await loadAgencesLogin();toast('t-admin','Agence supprimée','ok');}
+  catch(e){toast('t-admin','Erreur : '+e.message,'err');}
+}
+
+async function createUser(){
+  var ag=document.getElementById('nu-ag').value;
+  var nom=document.getElementById('nu-nom').value.trim();
+  var login=document.getElementById('nu-login').value.trim();
+  var pwd=document.getElementById('nu-pwd').value;
+  if(!ag||!nom||!login||!pwd){toast('t-admin','Tous les champs sont obligatoires','err');return;}
+  if(pwd.length<6){toast('t-admin','Mot de passe trop court (min. 6)','err');return;}
+  if(login==='admin'){toast('t-admin','Login "admin" réservé','err');return;}
+  try{
+    await sbPost('users',{agence_id:ag,nom,login,pwd,is_admin:false});
+    document.getElementById('nu-ag').value='';
+    document.getElementById('nu-nom').value='';
+    document.getElementById('nu-login').value='';
+    document.getElementById('nu-pwd').value='';
+    await renderAdminPage();
+    toast('t-admin','Utilisateur '+nom+' créé','ok');
+  }catch(e){toast('t-admin','Erreur (login déjà pris ?) : '+e.message,'err');}
+}
+
+async function deleteUser(id,nom){
+  if(!confirm('Supprimer "'+nom+'" ?'))return;
+  try{await sbDelete('users','id=eq.'+id);await renderAdminPage();toast('t-admin','Utilisateur supprimé','ok');}
+  catch(e){toast('t-admin','Erreur : '+e.message,'err');}
+}
+
+function openPwdModal(id,nom,login){
+  S.pwdTargetId=id;
+  document.getElementById('pwd-target-lbl').textContent=nom+' — @'+login;
+  document.getElementById('pwd-new').value='';
+  document.getElementById('pwd-confirm').value='';
+  document.getElementById('pwd-err').classList.remove('on');
+  document.getElementById('modal-pwd').classList.add('on');
+}
+
+async function savePwd(){
+  var np=document.getElementById('pwd-new').value;
+  var cp=document.getElementById('pwd-confirm').value;
+  var err=document.getElementById('pwd-err');
+  if(np.length<6){toast2(err,'Mot de passe trop court','err');return;}
+  if(np!==cp){toast2(err,'Les mots de passe ne correspondent pas','err');return;}
+  try{
+    await sbPatch('users','id=eq.'+S.pwdTargetId,{pwd:np});
+    document.getElementById('modal-pwd').classList.remove('on');
+    toast('t-admin','Mot de passe modifié','ok');
+  }catch(e){toast2(err,'Erreur : '+e.message,'err');}
+}
+
+async function changeAdminPwd(){
+  var p1=document.getElementById('adm-pwd1').value;
+  var p2=document.getElementById('adm-pwd2').value;
+  if(p1.length<6){toast('t-admin','Mot de passe trop court (min. 6)','err');return;}
+  if(p1!==p2){toast('t-admin','Les mots de passe ne correspondent pas','err');return;}
+  try{
+    await sbPatch('users','login=eq.admin&is_admin=eq.true',{pwd:p1});
+    document.getElementById('adm-pwd1').value='';
+    document.getElementById('adm-pwd2').value='';
+    toast('t-admin','Mot de passe admin modifié','ok');
+  }catch(e){toast('t-admin','Erreur : '+e.message,'err');}
+}
+
+// ================================================================
+// IMPORT ARTICLES
+// ================================================================
+async function importArticles(input){
+  var file=input.files[0];if(!file)return;
+  var reader=new FileReader();
+  reader.onload=async function(e){
+    try{
+      var wb=XLSX.read(e.target.result,{type:'array'});
+      var sn=wb.SheetNames.find(n=>n.toLowerCase()==='articles')||wb.SheetNames[0];
+      var rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''});
+      if(rows.length<2){showIR('xl-art-result','err','Fichier vide.');return;}
+      var ok=[],errs=[];
+      for(var i=1;i<rows.length;i++){
+        var r=rows[i];
+        if(!r[0]&&!r[1]&&!r[2])continue;
+        var agence=String(r[0]||'').trim(),ref=String(r[1]||'').trim(),des=String(r[2]||'').trim(),fam=String(r[3]||'').trim();
+        var stock=parseInt(r[4]),tourn=parseInt(r[5]);
+        if(!agence||!ref||!des||!fam){errs.push('L.'+(i+1)+' données manquantes');continue;}
+        if(isNaN(stock)){errs.push('L.'+(i+1)+' stock invalide');continue;}
+        if(isNaN(tourn)||(tourn!==0&&tourn!==1))tourn=0;
+        ok.push({agence_id:agence,ref,designation:des,famille:fam,stock,tournant:tourn});
+      }
+      if(!ok.length){showIR('xl-art-result','err','Aucun article valide. '+errs.slice(0,3).join(' | '));return;}
+      showIR('xl-art-result','ok','⏳ Import en cours...');
+      var impAgs=[...new Set(ok.map(a=>a.agence_id))];
+      for(var agId of impAgs){
+        if(!S.agences.find(a=>a.id===agId)){try{await sbPost('agences',{id:agId,label:agId});}catch(e){}}
+        try{await sbDelete('articles','agence_id=eq.'+agId);}catch(e){}
+      }
+      for(var i=0;i<ok.length;i+=500)await sbPost('articles',ok.slice(i,i+500));
+      await loadAgencesLogin();
+      showIR('xl-art-result','ok','<strong>'+ok.length+' articles importés</strong> ('+impAgs.length+' agence(s)).'+(errs.length?' '+errs.length+' ligne(s) ignorée(s).':''));
+    }catch(e){showIR('xl-art-result','err','Erreur : '+e.message);}
+  };
+  reader.readAsArrayBuffer(file);input.value='';
+}
+
+// ================================================================
+// IMPORT UTILISATEURS
+// ================================================================
+async function importUsers(input){
+  var file=input.files[0];if(!file)return;
+  var isCsv=file.name.toLowerCase().endsWith('.csv');
+  var reader=new FileReader();
+  reader.onload=async function(e){
+    try{
+      var rows;
+      if(isCsv){
+        rows=e.target.result.split('\n').map(function(line){
+          var sep=line.includes(';')?';':',';
+          return line.split(sep).map(function(c){return c.trim().replace(/^"|"$/g,'');});
+        }).filter(r=>r.some(c=>c));
+      }else{
+        var wb=XLSX.read(e.target.result,{type:'array'});
+        rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
+      }
+      if(rows.length<2){showIR('xl-usr-result','err','Fichier vide.');return;}
+      var existing=await sbGet('users','select=login');
+      var existingLogins=new Set(existing.map(u=>u.login));
+      var ok=[],errs=[],skipped=0;
+      for(var i=1;i<rows.length;i++){
+        var r=rows[i];
+        if(!r[0]&&!r[1]&&!r[2])continue;
+        var agence=String(r[0]||'').trim(),nom=String(r[1]||'').trim(),login=String(r[2]||'').trim(),pwd=String(r[3]||'').trim();
+        if(!agence||!nom||!login||!pwd){errs.push('L.'+(i+1)+' données manquantes');continue;}
+        if(pwd.length<4){errs.push('L.'+(i+1)+' mdp trop court');continue;}
+        if(login==='admin'){errs.push('L.'+(i+1)+' login réservé');continue;}
+        if(existingLogins.has(login)){skipped++;continue;}
+        ok.push({agence_id:agence,nom,login,pwd,is_admin:false});
+        existingLogins.add(login);
+      }
+      if(!ok.length&&!skipped){showIR('xl-usr-result','err','Aucun utilisateur valide.');return;}
+      showIR('xl-usr-result','ok','⏳ Création en cours...');
+      var impAgs=[...new Set(ok.map(u=>u.agence_id))];
+      for(var agId of impAgs){if(!S.agences.find(a=>a.id===agId)){try{await sbPost('agences',{id:agId,label:agId});}catch(e){}}}
+      if(ok.length)await sbPost('users',ok);
+      await renderAdminPage();
+      var msg='<strong>'+ok.length+' utilisateur(s) créé(s)</strong>';
+      if(skipped)msg+=' · '+skipped+' ignoré(s) (login existant)';
+      if(errs.length)msg+=' · '+errs.length+' erreur(s)';
+      showIR('xl-usr-result','ok',msg);
+    }catch(e){showIR('xl-usr-result','err','Erreur : '+e.message);}
+  };
+  if(isCsv)reader.readAsText(file,'UTF-8');else reader.readAsArrayBuffer(file);
+  input.value='';
+}
+
+function showIR(id,type,html){document.getElementById(id).innerHTML='<div class="toast on t-'+(type==='ok'?'ok':'err')+'" style="margin:0">'+html+'</div>';}
+
+function dlTemplateArticles(){
+  var wb=XLSX.utils.book_new();
+  var ws=XLSX.utils.aoa_to_sheet([['agence','ref','designation','famille','stock','tournant'],['AGC-NORD','AE-001','MULTI SPRAY 8EN1 400ML','Aérosols',24,1],['AGC-NORD','AD-001','SOUDAFOAM 750ML','Adhésifs',45,0],['AGC-SUD','AE-001','MULTI SPRAY 8EN1 400ML','Aérosols',15,1]]);
+  ws['!cols']=[{wch:14},{wch:12},{wch:45},{wch:16},{wch:8},{wch:10}];
+  XLSX.utils.book_append_sheet(wb,ws,'Articles');XLSX.writeFile(wb,'modele_articles.xlsx');
+}
+
+function dlTemplateUsers(){
+  var wb=XLSX.utils.book_new();
+  var ws=XLSX.utils.aoa_to_sheet([['agence_id','nom','login','mot_de_passe'],['AGC-NORD','Martin Dupont','m.dupont','MotDePasse1!'],['AGC-NORD','Sophie Leroy','s.leroy','MotDePasse2!'],['AGC-SUD','Paul Mercier','p.mercier','MotDePasse3!']]);
+  ws['!cols']=[{wch:14},{wch:22},{wch:16},{wch:18}];
+  XLSX.utils.book_append_sheet(wb,ws,'Utilisateurs');XLSX.writeFile(wb,'modele_utilisateurs.xlsx');
+}
+
+// ================================================================
+// SAISIE
+// ================================================================
+function buildFamilleList(){
+  var fams=[...new Set(S.articles.map(a=>a.famille))].sort();
+  var sel=document.getElementById('fam-sel');
+  sel.innerHTML='<option value="">Choisir une famille...</option>';
+  fams.forEach(function(f){
+    var cnt=S.articles.filter(a=>a.famille===f).length;
+    var cntT=S.articles.filter(a=>a.famille===f&&a.tournant===1).length;
+    var o=document.createElement('option');o.value=f;
+    o.textContent=f+' ('+cnt+' art.'+(cntT?' · '+cntT+' T':'')+')';
+    sel.appendChild(o);
+  });
+}
+
+function onFamChange(){
+  var f=document.getElementById('fam-sel').value;
+  var isTournant=document.getElementById('tgl-t').checked;
+  S.selFam=f||null;
+  var info=document.getElementById('fam-info');
+  if(!f){info.style.display='none';return;}
+  var arts=S.articles.filter(a=>a.famille===f);
+  var cntT=arts.filter(a=>a.tournant===1).length;
+  info.style.display='';
+  info.textContent=arts.length+' articles · '+cntT+' tournants'+(isTournant?' → mode tournant : '+cntT+' affichés.':' · stock total : '+arts.reduce((s,a)=>s+a.stock,0)+' unités.');
+}
+
+function goStep1(){S.step=1;show(['st1'],['st2','st3']);show(['bb1'],['bb2','bb3']);setDots(1);}
+
+function goStep2(){
+  if(!S.selFam){alert('Sélectionnez une famille.');return;}
+  S.invDate=document.getElementById('inv-dt').value;
+  S.tournant=document.getElementById('tgl-t').checked;
+  if(!S.editId||Object.keys(S.frozenStocks).length===0){
+    S.frozenStocks={};
+    S.articles.filter(a=>a.famille===S.selFam).forEach(function(a){S.frozenStocks[a.ref]=a.stock;});
+  }
+  buildTable();
+  S.step=2;show(['st2'],['st1','st3']);show(['bb2'],['bb1','bb3']);setDots(2);
+  document.getElementById('st2-fam-badge').textContent=S.selFam;
+  document.getElementById('st2-tournant-badge').style.display=S.tournant?'':'none';
+}
+
+function buildTable(){
+  var arts=activeArts();
+  var tbody=document.getElementById('inv-body');
+  tbody.innerHTML='';
+  if(!arts.length){tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;font-size:13px">Aucun article tournant dans cette famille.</td></tr>';updMetrics();return;}
+  arts.forEach(function(a){
+    var fs=S.frozenStocks[a.ref]!==undefined?S.frozenStocks[a.ref]:a.stock;
+    var v=S.vals[a.ref]!==undefined?S.vals[a.ref]:'';
+    var c=S.coms[a.ref]||'';
+    var e=v!==''?parseInt(v)-fs:null;
+    var eCl=e===null?'ev-z':e>0?'ev-p':e<0?'ev-m':'ev-z';
+    var tr=document.createElement('tr');
+    if(e!==null&&e>0)tr.classList.add('ep');
+    if(e!==null&&e<0)tr.classList.add('em');
+    tr.id='tr-'+a.ref;
+    tr.innerHTML='<td style="font-family:monospace;font-size:11px;white-space:nowrap">'+a.ref+(a.tournant?'<br><span class="badge b-amber" style="font-size:9px;padding:1px 5px">T</span>':'')+'</td>'+
+      '<td style="max-width:120px;font-size:12px;line-height:1.3">'+a.designation+'</td>'+
+      '<td style="text-align:right;font-weight:600">'+fs+'</td>'+
+      '<td><input class="iqty'+(v!==''?' ok':'')+'" id="q-'+a.ref+'" type="number" min="0" value="'+(v!==''?v:'')+'" placeholder="—" oninput="updRow(''+a.ref+'','+fs+')"/></td>'+
+      '<td class="ev"><span class="'+eCl+'" id="e-'+a.ref+'">'+(e!==null?(e>0?'+':'')+e:'—')+'</span></td>'+
+      '<td><input class="icom" id="c-'+a.ref+'" value="'+c+'" placeholder="Note..."/></td>';
+    tbody.appendChild(tr);
+  });
+  updMetrics();
+}
+
+function updRow(ref,fs){
+  var inp=document.getElementById('q-'+ref);var v=inp.value;
+  S.vals[ref]=v!==''?parseInt(v):undefined;
+  inp.classList.toggle('ok',v!=='');
+  var eEl=document.getElementById('e-'+ref);var tr=document.getElementById('tr-'+ref);
+  tr.classList.remove('ep','em');
+  if(v!==''){var e=parseInt(v)-fs;eEl.textContent=(e>0?'+':'')+e;eEl.className='ev '+(e>0?'ev-p':e<0?'ev-m':'ev-z');if(e>0)tr.classList.add('ep');if(e<0)tr.classList.add('em');}
+  else{eEl.textContent='—';eEl.className='ev ev-z';}
+  updMetrics();
+}
+
+function updMetrics(){
+  var arts=activeArts();var s=0,p=0,m=0;
+  arts.forEach(function(a){var v=S.vals[a.ref];if(v!==undefined){s++;var e=v-(S.frozenStocks[a.ref]!==undefined?S.frozenStocks[a.ref]:a.stock);if(e>0)p++;if(e<0)m++;}});
+  document.getElementById('m-s').textContent=s;document.getElementById('m-p').textContent=p;document.getElementById('m-m').textContent=m;
+  var pct=arts.length?Math.round(s/arts.length*100):0;
+  document.getElementById('pb-lbl').textContent=s+' / '+arts.length+' articles'+(S.tournant?' (tournants)':'');
+  document.getElementById('pb-pct').textContent=pct+'%';document.getElementById('pb-fill').style.width=pct+'%';
+}
+
+function syncComs(){activeArts().forEach(function(a){var c=document.getElementById('c-'+a.ref);if(c)S.coms[a.ref]=c.value;});}
+
+// ================================================================
+// SAUVEGARDE → SUPABASE
+// ================================================================
+async function saveEncours(){
+  syncComs();
+  var btn=document.getElementById('btn-save');btn.disabled=true;btn.textContent='Enreg...';
+  try{
+    if(S.editId){
+      await sbPatch('inventaires','id=eq.'+S.editId,{saved_at:new Date().toISOString()});
+    }else{
+      var id='INV-'+Date.now().toString(36).toUpperCase();
+      await sbPost('inventaires',[{id,agence_id:S.agence,ag_label:S.agLabel,user_login:S.user.login,user_nom:S.user.nom,fam_id:S.selFam,date_inv:S.invDate,tournant:S.tournant,status:'en-cours'}]);
+      S.editId=id;
+    }
+    await upsertLignes(S.editId);
+    floatToast('Inventaire enregistré ✓');
+    renderEncours();
+  }catch(e){toast('t-encours','Erreur sauvegarde : '+e.message,'err');}
+  btn.disabled=false;btn.textContent='Enregistrer';
+}
+
+async function upsertLignes(invId){
+  var lignes=activeArts().map(function(a){return{inventaire_id:invId,ref:a.ref,frozen_stock:S.frozenStocks[a.ref]!==undefined?S.frozenStocks[a.ref]:a.stock,valeur:S.vals[a.ref]!==undefined?S.vals[a.ref]:null,commentaire:S.coms[a.ref]||null};});
+  if(lignes.length)await sbUpsert('lignes_inventaire',lignes);
+}
+
+function goStep3(){
+  syncComs();
+  var arts=activeArts();var s=0,p=0,m=0,ecarts=[];
+  arts.forEach(function(a){var v=S.vals[a.ref];var fs=S.frozenStocks[a.ref]!==undefined?S.frozenStocks[a.ref]:a.stock;if(v!==undefined){s++;var e=v-fs;if(e>0)p++;if(e<0)m++;if(e!==0)ecarts.push({ref:a.ref,des:a.designation,fs,v,e});}});
+  ecarts.sort((a,b)=>Math.abs(b.e)-Math.abs(a.e));
+  document.getElementById('v-title').textContent=S.selFam+' — '+fmtD(S.invDate);
+  document.getElementById('v-sub').textContent=S.agLabel+(S.tournant?' · Tournant':'')+' · '+S.user.nom;
+  document.getElementById('v-cpt').textContent=s;document.getElementById('v-tot').textContent=arts.length;
+  document.getElementById('v-p').textContent=p;document.getElementById('v-m').textContent=m;
+  var el=document.getElementById('v-ecarts');el.innerHTML='';
+  if(!ecarts.length)el.innerHTML='<div style="font-size:13px;color:var(--text2);text-align:center;padding:10px">Aucun écart</div>';
+  ecarts.slice(0,5).forEach(function(e){var r=document.createElement('div');r.style.cssText='display:flex;justify-content:space-between;padding:6px 0;border-bottom:0.5px solid var(--bord);font-size:12px';r.innerHTML='<span style="color:var(--text2)">'+e.ref+' — '+e.des.substring(0,30)+'</span><span style="font-weight:700;color:'+(e.e>0?'var(--teal)':'var(--red)')+'">'+( e.e>0?'+':'')+e.e+'</span>';el.appendChild(r);});
+  S.step=3;show(['st3'],['st1','st2']);show(['bb3'],['bb1','bb2']);setDots(3);
+}
+
+async function cloture(){
+  syncComs();
+  var btn=document.getElementById('btn-clot');btn.disabled=true;btn.textContent='Clôture...';
+  var commentG=document.getElementById('v-com').value;
+  try{
+    var invId=S.editId;
+    if(invId){await sbPatch('inventaires','id=eq.'+invId,{status:'cloture',comment_g:commentG,closed_at:new Date().toISOString()});}
+    else{
+      invId='INV-'+Date.now().toString(36).toUpperCase();
+      await sbPost('inventaires',[{id:invId,agence_id:S.agence,ag_label:S.agLabel,user_login:S.user.login,user_nom:S.user.nom,fam_id:S.selFam,date_inv:S.invDate,tournant:S.tournant,status:'cloture',comment_g:commentG,closed_at:new Date().toISOString()}]);
+    }
+    await upsertLignes(invId);
+    S.editId=null;resetSaisie();tab('clotures');
+    setTimeout(()=>toast('t-clotures','Inventaire clôturé avec succès','ok'),100);
+  }catch(e){toast('t-clotures','Erreur : '+e.message,'err');}
+  btn.disabled=false;btn.textContent='Clôturer l'inventaire';
+}
+
+function resetSaisie(){
+  S.selFam=null;S.vals={};S.coms={};S.editId=null;S.frozenStocks={};S.tournant=false;
+  document.getElementById('fam-sel').value='';document.getElementById('fam-info').style.display='none';
+  document.getElementById('tgl-t').checked=false;document.getElementById('v-com').value='';goStep1();
+}
+
+// ================================================================
+// EN COURS
+// ================================================================
+async function renderEncours(){
+  var el=document.getElementById('encours-list');
+  el.innerHTML='<div style="display:flex;align-items:center;gap:10px;padding:30px;color:var(--text2);font-size:13px"><div style="width:20px;height:20px;border:2.5px solid var(--gray-m);border-top-color:var(--blue);border-radius:50%;animation:sp .7s linear infinite"></div>Chargement...</div>';
+  try{
+    var items=await sbGet('inventaires','agence_id=eq.'+S.agence+'&status=eq.en-cours&order=saved_at.desc');
+    if(!items.length){el.innerHTML='<div class="empty"><div class="ei">📋</div><p>Aucun inventaire en cours</p></div>';return;}
+    el.innerHTML='';
+    for(var inv of items){
+      var lignes=await sbGet('lignes_inventaire','inventaire_id=eq.'+inv.id+'&select=ref,valeur');
+      var arts=S.articles.filter(a=>a.famille===inv.fam_id);
+      if(inv.tournant)arts=arts.filter(a=>a.tournant===1);
+      var s=lignes.filter(l=>l.valeur!==null).length,tot=arts.length,pct=tot?Math.round(s/tot*100):0;
+      var d=document.createElement('div');d.className='ii';
+      d.innerHTML='<div class="ii-top"><div class="ii-title">'+inv.fam_id+'</div><span class="badge b-blue">'+pct+'%</span></div>'+
+        '<div class="ii-sub">'+inv.ag_label+' · '+fmtD(inv.date_inv)+' · '+inv.user_nom+(inv.tournant?' · <span class="badge b-amber">Tournant</span>':'')+'</div>'+
+        '<div style="margin:8px 0 4px"><div class="pb"><div class="pb-fill" style="width:'+pct+'%"></div></div></div>'+
+        '<div class="ii-foot"><button class="btn btn-p btn-sm" onclick="resumeInv(''+inv.id+'')">Reprendre</button>'+
+        '<button class="btn btn-s btn-sm" onclick="delInv(''+inv.id+'')">Supprimer</button>'+
+        '<span style="font-size:11px;color:var(--text3)">'+s+'/'+tot+' art.</span></div>';
+      el.appendChild(d);
+    }
+  }catch(e){el.innerHTML='<div class="empty"><p style="color:var(--red)">Erreur : '+e.message+'</p></div>';}
+}
+
+async function resumeInv(id){
+  try{
+    var invs=await sbGet('inventaires','id=eq.'+id);var inv=invs[0];if(!inv)return;
+    var lignes=await sbGet('lignes_inventaire','inventaire_id=eq.'+id);
+    S.selFam=inv.fam_id;S.invDate=inv.date_inv;S.tournant=inv.tournant;
+    S.vals={};S.coms={};S.frozenStocks={};
+    lignes.forEach(function(l){if(l.frozen_stock!==null)S.frozenStocks[l.ref]=l.frozen_stock;if(l.valeur!==null)S.vals[l.ref]=l.valeur;if(l.commentaire)S.coms[l.ref]=l.commentaire;});
+    S.editId=id;
+    document.getElementById('fam-sel').value=inv.fam_id;document.getElementById('inv-dt').value=inv.date_inv;document.getElementById('tgl-t').checked=inv.tournant;
+    onFamChange();tab('saisie');goStep2();
+  }catch(e){alert('Erreur : '+e.message);}
+}
+
+async function delInv(id){if(!confirm('Supprimer cet inventaire ?'))return;try{await sbDelete('inventaires','id=eq.'+id);renderEncours();}catch(e){alert('Erreur : '+e.message);}}
+
+// ================================================================
+// CLÔTURÉS
+// ================================================================
+async function renderClotures(){
+  var el=document.getElementById('clotures-list');
+  el.innerHTML='<div style="display:flex;align-items:center;gap:10px;padding:30px;color:var(--text2);font-size:13px"><div style="width:20px;height:20px;border:2.5px solid var(--gray-m);border-top-color:var(--blue);border-radius:50%;animation:sp .7s linear infinite"></div>Chargement...</div>';
+  try{
+    var items=await sbGet('inventaires','agence_id=eq.'+S.agence+'&status=eq.cloture&order=closed_at.desc');
+    if(!items.length){el.innerHTML='<div class="empty"><div class="ei">✅</div><p>Aucun inventaire clôturé</p></div>';return;}
+    el.innerHTML='';
+    for(var inv of items){
+      var lignes=await sbGet('lignes_inventaire','inventaire_id=eq.'+inv.id+'&select=valeur,frozen_stock');
+      var s=lignes.filter(l=>l.valeur!==null).length;
+      var ecarts=lignes.filter(l=>l.valeur!==null&&l.valeur!==l.frozen_stock).length;
+      var d=document.createElement('div');d.className='ii';
+      d.innerHTML='<div class="ii-top"><div class="ii-title">'+inv.fam_id+'</div><span class="badge b-teal">Clôturé</span></div>'+
+        '<div class="ii-sub">'+inv.ag_label+' · '+fmtD(inv.date_inv)+' · '+inv.user_nom+'</div>'+
+        '<div class="ii-foot"><span class="badge b-gray">'+s+' comptés</span>'+
+        '<span class="badge '+(ecarts>0?'b-amber':'b-teal')+'">'+ecarts+' écarts</span>'+
+        (inv.tournant?'<span class="badge b-amber">Tournant</span>':'')+
+        '<button class="btn btn-s btn-sm" onclick="showRapport(''+inv.id+'')">Voir / PDF</button></div>';
+      el.appendChild(d);
+    }
+  }catch(e){el.innerHTML='<div class="empty"><p style="color:var(--red)">Erreur : '+e.message+'</p></div>';}
+}
+
+// ================================================================
+// RAPPORT + PDF
+// ================================================================
+async function showRapport(id){
+  try{
+    var invs=await sbGet('inventaires','id=eq.'+id);var inv=invs[0];if(!inv)return;
+    var lignes=await sbGet('lignes_inventaire','inventaire_id=eq.'+id);
+    var arts=S.articles.filter(a=>a.famille===inv.fam_id);if(inv.tournant)arts=arts.filter(a=>a.tournant===1);
+    document.getElementById('m-title').textContent=inv.fam_id+' — '+fmtD(inv.date_inv);
+    var s=0,p=0,m=0;
+    lignes.forEach(function(l){if(l.valeur!==null){s++;var e=l.valeur-(l.frozen_stock||0);if(e>0)p++;if(e<0)m++;}});
+    var html='<div class="rh"><h2>'+inv.fam_id+'</h2><p>'+inv.ag_label+' · '+fmtD(inv.date_inv)+(inv.tournant?' · Tournant':'')+'<br>'+inv.user_nom+'</p></div>';
+    html+='<div class="kgrid"><div class="kpi"><div class="kl">Comptés</div><div class="kv">'+s+'</div></div><div class="kpi"><div class="kl">Total</div><div class="kv">'+arts.length+'</div></div><div class="kpi"><div class="kl">Écarts +</div><div class="kv pos">'+p+'</div></div><div class="kpi"><div class="kl">Écarts −</div><div class="kv neg">'+m+'</div></div></div>';
+    html+='<div class="tw"><table><thead><tr><th>Réf.</th><th>Désignation</th><th>Stock figé</th><th>Relevé</th><th>Écart</th><th>Note</th></tr></thead><tbody>';
+    arts.forEach(function(a){
+      var l=lignes.find(x=>x.ref===a.ref);var fs=l&&l.frozen_stock!==null?l.frozen_stock:a.stock;var v=l?l.valeur:null;var c=l?l.commentaire||'':'';
+      if(v===null){html+='<tr style="opacity:.4"><td style="font-family:monospace;font-size:11px">'+a.ref+'</td><td>'+a.designation.substring(0,35)+'</td><td style="text-align:right">'+fs+'</td><td style="text-align:center;color:var(--text3)">—</td><td>—</td><td></td></tr>';}
+      else{var e=v-fs;html+='<tr style="'+(e>0?'background:rgba(225,245,238,.4)':e<0?'background:rgba(252,235,235,.4)':'')+'"><td style="font-family:monospace;font-size:11px">'+a.ref+'</td><td style="font-size:12px">'+a.designation.substring(0,35)+'</td><td style="text-align:right">'+fs+'</td><td style="text-align:right;font-weight:600">'+v+'</td><td style="font-weight:700;color:'+(e>0?'var(--teal)':e<0?'var(--red)':'var(--text3)')+'">'+(e>0?'+':'')+e+'</td><td style="font-size:12px;color:var(--text2)">'+c+'</td></tr>';}
+    });
+    html+='</tbody></table></div>';
+    if(inv.comment_g)html+='<div style="margin-top:10px;padding:10px;background:var(--bg2);border-radius:var(--r);font-size:13px;color:var(--text2)">'+inv.comment_g+'</div>';
+    document.getElementById('m-body').innerHTML=html;
+    document.getElementById('m-actions').innerHTML='<button class="btn btn-p btn-sm" onclick="genPDF(''+id+'')">Télécharger PDF</button><button class="btn btn-s btn-sm" onclick="closeModalNow()">Fermer</button>';
+    document.getElementById('modal').classList.add('on');
+  }catch(e){alert('Erreur : '+e.message);}
+}
+
+async function genPDF(id){
+  var invs=await sbGet('inventaires','id=eq.'+id);var inv=invs[0];if(!inv)return;
+  var lignes=await sbGet('lignes_inventaire','inventaire_id=eq.'+id);
+  var arts=S.articles.filter(a=>a.famille===inv.fam_id);if(inv.tournant)arts=arts.filter(a=>a.tournant===1);
+  var{jsPDF}=window.jspdf;var doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  var B=[24,95,165],T=[29,158,117],R=[226,75,74],G=[95,94,90],W=210,M=14;
+  doc.setFillColor(...B);doc.rect(0,0,W,26,'F');doc.setTextColor(255,255,255);doc.setFontSize(15);doc.setFont(undefined,'bold');doc.text('GestoStock — Rapport d'inventaire',M,11);
+  doc.setFontSize(8);doc.setFont(undefined,'normal');doc.text(inv.ag_label+' · '+fmtD(inv.date_inv)+(inv.tournant?' · Tournant':''),M,18);doc.text('Opérateur: '+inv.user_nom+' · Réf: '+inv.id,M,23);doc.text('Généré le '+new Date().toLocaleDateString('fr-FR'),W-M,23,{align:'right'});
+  doc.setTextColor(...G);doc.setFontSize(13);doc.setFont(undefined,'bold');doc.text(inv.fam_id,M,35);
+  var s=0,p=0,m=0;lignes.forEach(function(l){if(l.valeur!==null){s++;var e=l.valeur-(l.frozen_stock||0);if(e>0)p++;if(e<0)m++;}});
+  [['Comptés',s,'gray'],['Total',arts.length,'gray'],['Écarts +',p,'teal'],['Écarts −',m,'red']].forEach(function(k,i){doc.setFillColor(245,244,240);doc.roundedRect(M+i*46,40,44,14,2,2,'F');doc.setTextColor(...G);doc.setFontSize(7);doc.setFont(undefined,'normal');doc.text(k[0],M+i*46+22,44.5,{align:'center'});doc.setTextColor(...(k[2]==='teal'?T:k[2]==='red'?R:G));doc.setFontSize(13);doc.setFont(undefined,'bold');doc.text(''+k[1],M+i*46+22,52,{align:'center'});});
+  var body=[];arts.forEach(function(a){var l=lignes.find(x=>x.ref===a.ref);if(!l||l.valeur===null)return;var fs=l.frozen_stock!==null?l.frozen_stock:a.stock;var e=l.valeur-fs;body.push([a.ref,a.designation.length>38?a.designation.substring(0,38)+'…':a.designation,fs,l.valeur,(e>0?'+':'')+e,l.commentaire||'']);});
+  doc.autoTable({head:[['Référence','Désignation','Stock figé','Relevé','Écart','Commentaire']],body,startY:60,margin:{left:M,right:M},styles:{fontSize:8,cellPadding:2.5},headStyles:{fillColor:B,textColor:255,fontStyle:'bold'},columnStyles:{0:{cellWidth:22},1:{cellWidth:70},2:{cellWidth:20,halign:'right'},3:{cellWidth:18,halign:'right'},4:{cellWidth:16,halign:'right'},5:{cellWidth:28}},didParseCell:function(d){if(d.section==='body'&&d.column.index===4){var v=parseFloat(d.cell.text[0]);if(!isNaN(v)){if(v>0)d.cell.styles.textColor=T;else if(v<0)d.cell.styles.textColor=R;}}}});
+  if(inv.comment_g){var y=doc.lastAutoTable?doc.lastAutoTable.finalY+6:200;doc.setFillColor(245,244,240);doc.roundedRect(M,y,W-2*M,12,2,2,'F');doc.setTextColor(...G);doc.setFontSize(8);doc.text('Note: '+inv.comment_g,M+4,y+8);}
+  var nb=doc.internal.getNumberOfPages();for(var i=1;i<=nb;i++){doc.setPage(i);doc.setFillColor(245,244,240);doc.rect(0,287,W,10,'F');doc.setTextColor(...G);doc.setFontSize(7);doc.text('GestoStock · '+inv.ag_label,M,293);doc.text('Page '+i+'/'+nb,W-M,293,{align:'right'});}
+  doc.save('inventaire_'+inv.fam_id+'_'+inv.date_inv+'.pdf');
+}
+
+// ================================================================
+// RAPPORTS
+// ================================================================
+async function exportXLS(){
+  var d1=document.getElementById('r-d1').value,d2=document.getElementById('r-d2').value,ag=document.getElementById('r-ag').value;
+  if(!d1||!d2){toast('t-rapports','Sélectionnez une période','err');return;}
+  try{
+    var items=await sbGet('inventaires','status=eq.cloture&date_inv=gte.'+d1+'&date_inv=lte.'+d2+(ag?'&agence_id=eq.'+ag:'')+'&order=closed_at.desc');
+    if(!items.length){toast('t-rapports','Aucun inventaire sur cette période','err');return;}
+    var wb=XLSX.utils.book_new();
+    var recap=[['ID','Agence','Famille','Date','Type','Opérateur','Comptés','Écarts+','Écarts-']];
+    var detail=[['ID Inventaire','Agence','Famille','Date','Référence','Désignation','Stock figé','Relevé','Écart','Commentaire']];
+    for(var inv of items){
+      var lignes=await sbGet('lignes_inventaire','inventaire_id=eq.'+inv.id);
+      var s=lignes.filter(l=>l.valeur!==null).length,p=lignes.filter(l=>l.valeur!==null&&l.valeur>(l.frozen_stock||0)).length,m=lignes.filter(l=>l.valeur!==null&&l.valeur<(l.frozen_stock||0)).length;
+      recap.push([inv.id,inv.ag_label,inv.fam_id,fmtD(inv.date_inv),inv.tournant?'Tournant':'Complet',inv.user_nom,s,p,m]);
+      lignes.filter(l=>l.valeur!==null).forEach(function(l){var art=S.articles.find(a=>a.ref===l.ref);var fs=l.frozen_stock!==null?l.frozen_stock:0;detail.push([inv.id,inv.ag_label,inv.fam_id,fmtD(inv.date_inv),l.ref,art?art.designation:'',fs,l.valeur,l.valeur-fs,l.commentaire||'']);});
+    }
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(recap),'Récapitulatif');XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(detail),'Détail articles');
+    XLSX.writeFile(wb,'rapport_'+d1+'_'+d2+'.xlsx');toast('t-rapports','Export généré','ok');
+  }catch(e){toast('t-rapports','Erreur : '+e.message,'err');}
+}
+
+async function renderStats(){
+  var el=document.getElementById('rpt-stats');
+  el.innerHTML='<div style="display:flex;align-items:center;gap:10px;padding:20px;color:var(--text2);font-size:13px"><div style="width:18px;height:18px;border:2.5px solid var(--gray-m);border-top-color:var(--blue);border-radius:50%;animation:sp .7s linear infinite"></div></div>';
+  try{
+    var items=await sbGet('inventaires','status=eq.cloture&agence_id=eq.'+S.agence+'&order=closed_at.desc&limit=100');
+    if(!items.length){el.innerHTML='<div style="font-size:13px;color:var(--text2);text-align:center;padding:16px">Aucun inventaire clôturé</div>';return;}
+    var byFam={};
+    for(var inv of items){
+      if(!byFam[inv.fam_id])byFam[inv.fam_id]={nb:0,ec:0};byFam[inv.fam_id].nb++;
+      var lignes=await sbGet('lignes_inventaire','inventaire_id=eq.'+inv.id+'&select=valeur,frozen_stock');
+      lignes.forEach(function(l){if(l.valeur!==null&&l.valeur!==l.frozen_stock)byFam[inv.fam_id].ec++;});
+    }
+    el.innerHTML=Object.entries(byFam).map(([n,d])=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--bord);font-size:13px"><span>'+n+'</span><span style="display:flex;gap:7px"><span class="badge b-blue">'+d.nb+' inv.</span><span class="badge '+(d.ec?'b-amber':'b-teal')+'">'+d.ec+' écarts</span></span></div>').join('');
+    var now=new Date(),y=now.getFullYear(),mo=String(now.getMonth()+1).padStart(2,'0');
+    if(!document.getElementById('r-d1').value)document.getElementById('r-d1').value=y+'-'+mo+'-01';
+    if(!document.getElementById('r-d2').value)document.getElementById('r-d2').value=now.toISOString().split('T')[0];
+  }catch(e){el.innerHTML='<div style="font-size:13px;color:var(--red)">Erreur : '+e.message+'</div>';}
+}
+
+// ================================================================
+// HELPERS
+// ================================================================
+function setDots(n){['d1','d2','d3'].forEach(function(id,i){document.getElementById(id).className='dot'+(i+1<n?' done':i+1===n?' act':'');});}
+function show(on,off){on.forEach(id=>{var e=document.getElementById(id);if(e)e.style.display='';});off.forEach(id=>{var e=document.getElementById(id);if(e)e.style.display='none';});}
+function fmtD(d){if(!d)return'—';var s=String(d).split('T')[0].split('-');return s[2]+'/'+s[1]+'/'+s[0];}
+function toast(id,msg,type){var t=document.getElementById(id);t.textContent=(type==='ok'?'✓ ':'')+msg;t.className='toast on t-'+(type==='ok'?'ok':'err');setTimeout(()=>t.classList.remove('on'),3500);}
+function toast2(el,msg,type){el.textContent=msg;el.className='toast on t-'+(type==='ok'?'ok':'err');setTimeout(()=>el.classList.remove('on'),3500);}
+function floatToast(msg){var b=document.createElement('div');b.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--teal);color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;font-weight:600;white-space:nowrap;z-index:500;box-shadow:0 2px 8px rgba(0,0,0,.2)';b.textContent=msg;document.body.appendChild(b);setTimeout(()=>b.remove(),2200);}
+function closeModalNow(){document.getElementById('modal').classList.remove('on');}
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --blue:#185FA5;--blue-l:#E6F1FB;--blue-m:#378ADD;--blue-d:#0C447C;
+  --teal:#1D9E75;--teal-l:#E1F5EE;--teal-d:#085041;
+  --red:#E24B4A;--red-l:#FCEBEB;
+  --amber:#BA7517;--amber-l:#FAEEDA;
+  --gray:#5F5E5A;--gray-l:#F1EFE8;--gray-m:#D3D1C7;
+  --text:#1a1a18;--text2:#5F5E5A;--text3:#888780;
+  --bg:#fff;--bg2:#F7F6F2;
+  --bord:rgba(0,0,0,0.12);--bord2:rgba(0,0,0,0.22);
+  --r:8px;--rl:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg2);color:var(--text);font-size:14px;min-height:100vh}
+.app{max-width:600px;margin:0 auto;background:var(--bg);min-height:100vh;display:flex;flex-direction:column;position:relative}
+.nav{display:flex;background:var(--bg);border-bottom:0.5px solid var(--bord);position:sticky;top:0;z-index:100}
+.nb{flex:1;padding:10px 4px 8px;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--text3);border-bottom:2px solid transparent;transition:all .15s}
+.nb.on{color:var(--blue);border-bottom-color:var(--blue)}
+.nb svg{width:20px;height:20px}
+.scr{display:none;flex:1;flex-direction:column}.scr.on{display:flex}
+.topbar{padding:14px 16px;border-bottom:0.5px solid var(--bord);background:var(--bg)}
+.topbar h1{font-size:17px;font-weight:600}
+.topbar p{font-size:12px;color:var(--text2);margin-top:2px}
+.topbar-row{display:flex;align-items:center;justify-content:space-between}
+.content{padding:16px;flex:1;overflow-y:auto}
+/* LOGIN */
+.login-wrap{display:flex;flex-direction:column;justify-content:center;padding:32px 24px;flex:1;gap:18px}
+.logo{text-align:center;margin-bottom:4px}
+.logo-icon{width:60px;height:60px;background:var(--blue);border-radius:16px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px}
+.logo h2{font-size:22px;font-weight:700}.logo p{font-size:13px;color:var(--text2);margin-top:3px}
+/* FIELDS */
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em}
+.field input,.field select,.field textarea{padding:11px 13px;border:0.5px solid var(--bord2);border-radius:var(--r);font-size:15px;background:var(--bg);color:var(--text);outline:none;transition:border-color .15s;width:100%;font-family:inherit}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue-m);box-shadow:0 0 0 3px rgba(55,138,221,.1)}
+/* BUTTONS */
+.btn{padding:11px 18px;border-radius:var(--r);font-size:14px;font-weight:500;cursor:pointer;border:none;transition:all .15s;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.btn-p{background:var(--blue);color:#fff;width:100%}.btn-p:hover{background:var(--blue-d)}.btn-p:active{transform:scale(.98)}
+.btn-s{background:none;color:var(--text2);border:0.5px solid var(--bord2);width:100%}.btn-s:hover{background:var(--bg2)}
+.btn-ok{background:var(--teal);color:#fff}.btn-ok:hover{background:var(--teal-d)}
+.btn-sm{padding:6px 11px;font-size:12px}
+.btn-icon{padding:7px;border-radius:var(--r);background:none;border:none;cursor:pointer;color:var(--text2);display:inline-flex;align-items:center}.btn-icon:hover{background:var(--bg2)}
+/* CARDS */
+.card{background:var(--bg);border:0.5px solid var(--bord);border-radius:var(--rl);padding:14px;margin-bottom:10px}
+.card-t{font-size:14px;font-weight:600;color:var(--text)}
+/* BADGES */
+.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500}
+.b-blue{background:var(--blue-l);color:var(--blue-d)}.b-teal{background:var(--teal-l);color:var(--teal-d)}
+.b-amber{background:var(--amber-l);color:var(--amber)}.b-red{background:var(--red-l);color:var(--red)}
+.b-gray{background:var(--gray-l);color:var(--gray)}
+/* STEPS */
+.dots{display:flex;gap:6px;padding:11px 16px 0}
+.dot{flex:1;height:3px;border-radius:2px;background:var(--gray-m)}
+.dot.done{background:var(--teal)}.dot.act{background:var(--blue-m)}
+/* PROGRESS */
+.pb-wrap{margin-bottom:14px}
+.pb-lbl{display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:4px}
+.pb{height:4px;background:var(--gray-m);border-radius:2px}
+.pb-fill{height:100%;background:var(--teal);border-radius:2px;transition:width .3s}
+/* METRICS */
+.mrow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.met{background:var(--bg2);border-radius:var(--r);padding:10px 12px}
+.met .ml{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em}
+.met .mv{font-size:20px;font-weight:600;margin-top:2px}
+/* TABLE */
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{background:var(--bg2);padding:8px 7px;text-align:left;font-weight:600;font-size:11px;color:var(--text2);border-bottom:0.5px solid var(--bord2);white-space:nowrap;position:sticky;top:0;z-index:1}
+td{padding:7px;border-bottom:0.5px solid var(--bord);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr.ep td{background:rgba(225,245,238,.35)}
+tr.em td{background:rgba(252,235,235,.35)}
+.iqty{width:68px;padding:5px 7px;border:0.5px solid var(--bord2);border-radius:6px;font-size:13px;text-align:right;background:var(--bg);color:var(--text)}
+.iqty:focus{outline:none;border-color:var(--blue-m)}
+.iqty.ok{border-color:var(--teal);background:var(--teal-l)}
+.icom{width:100px;padding:4px 6px;border:0.5px solid var(--bord2);border-radius:6px;font-size:12px;background:var(--bg);color:var(--text)}
+.icom:focus{outline:none;border-color:var(--blue-m)}
+.ev{font-weight:600}.ev-p{color:var(--teal)}.ev-m{color:var(--red)}.ev-z{color:var(--text3)}
+/* TOGGLE */
+.trow{display:flex;align-items:center;justify-content:space-between;padding:13px;background:var(--bg2);border-radius:var(--r);border:0.5px solid var(--bord)}
+.tgl{position:relative;width:44px;height:24px;flex-shrink:0}
+.tgl input{opacity:0;width:0;height:0;position:absolute}
+.tgl-track{position:absolute;inset:0;background:var(--gray-m);border-radius:12px;transition:background .2s;cursor:pointer}
+.tgl input:checked+.tgl-track{background:var(--blue)}
+.tgl-thumb{position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s;pointer-events:none}
+.tgl input:checked~.tgl-thumb{transform:translateX(20px)}
+/* INV LIST */
+.ii{border:0.5px solid var(--bord);border-radius:var(--rl);padding:13px;margin-bottom:8px;background:var(--bg);transition:all .15s}
+.ii:hover{border-color:var(--bord2);box-shadow:0 1px 4px rgba(0,0,0,.07)}
+.ii-top{display:flex;justify-content:space-between;align-items:center}
+.ii-title{font-size:14px;font-weight:600}
+.ii-sub{font-size:12px;color:var(--text2);margin-top:4px}
+.ii-foot{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap;align-items:center}
+/* TOAST */
+.toast{display:none;padding:10px 14px;border-radius:var(--r);font-size:13px;font-weight:500;margin-bottom:10px;align-items:center;gap:7px}
+.toast.on{display:flex}
+.t-ok{background:var(--teal-l);color:var(--teal-d);border:0.5px solid var(--teal)}
+.t-err{background:var(--red-l);color:var(--red);border:0.5px solid var(--red)}
+/* RAPPORT */
+.rh{background:var(--blue);color:#fff;padding:16px;border-radius:var(--rl);margin-bottom:14px}
+.rh h2{font-size:16px;font-weight:600}.rh p{font-size:12px;opacity:.8;margin-top:2px}
+.kgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.kpi{background:var(--bg);border:0.5px solid var(--bord);border-radius:var(--r);padding:12px}
+.kpi .kl{font-size:11px;color:var(--text2)}.kpi .kv{font-size:22px;font-weight:600;margin-top:2px}
+.kv.pos{color:var(--teal)}.kv.neg{color:var(--red)}
+/* BOTTOM BAR */
+.bbar{padding:12px 16px;border-top:0.5px solid var(--bord);background:var(--bg);display:flex;gap:9px}
+.bbar .btn{flex:1}
+/* MODAL */
+.moverlay{display:none;position:absolute;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:flex-end}
+.moverlay.on{display:flex}
+.mbox{background:var(--bg);border-radius:var(--rl) var(--rl) 0 0;padding:20px;width:100%;max-height:85vh;overflow-y:auto}
+.mbox h3{font-size:16px;font-weight:600;margin-bottom:14px}
+/* MISC */
+.empty{text-align:center;padding:48px 20px;color:var(--text2)}
+.empty .ei{font-size:38px;margin-bottom:10px}
+.drow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.frozen-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 7px;border-radius:10px;background:var(--amber-l);color:var(--amber);font-weight:500}
+.sdiv{height:1px;background:var(--bord);margin:16px 0}
+/* ADMIN */
+.sec-title{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;padding-bottom:6px;border-bottom:0.5px solid var(--bord)}
+.ag-badge{display:inline-flex;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:var(--blue-l);color:var(--blue-d)}
+.admin-pill{background:var(--red-l);color:var(--red);border:0.5px solid var(--red);font-size:11px;font-weight:600;padding:2px 9px;border-radius:10px}
+.user-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:0.5px solid var(--bord)}
+.user-row:last-child{border-bottom:none}
+.uinfo{display:flex;flex-direction:column;gap:2px}
+.uname{font-size:13px;font-weight:600}.umeta{font-size:11px;color:var(--text3)}
+.uactions{display:flex;gap:6px}
+.note-box{background:var(--amber-l);border:0.5px solid var(--amber);color:var(--amber);padding:10px 13px;border-radius:var(--r);font-size:12px;margin-bottom:10px}
+.import-zone{border:1.5px dashed var(--bord2);border-radius:var(--rl);padding:18px;text-align:center;cursor:pointer;transition:all .15s;background:var(--bg2)}
+.import-zone:hover{border-color:var(--blue-m);background:var(--blue-l)}
+.import-zone p{font-size:13px;color:var(--text2);margin-top:6px}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+<!-- LOGIN -->
+<div class="scr on" id="scr-login">
+<div class="login-wrap">
+  <div class="logo">
+    <div class="logo-icon">
+      <svg width="30" height="30" fill="none" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2" fill="#fff" opacity=".9"/><rect x="13" y="3" width="8" height="8" rx="2" fill="#fff" opacity=".6"/><rect x="3" y="13" width="8" height="8" rx="2" fill="#fff" opacity=".6"/><rect x="13" y="13" width="8" height="8" rx="2" fill="#fff" opacity=".9"/></svg>
+    </div>
+    <h2>GestoStock</h2>
+    <p>Gestion des inventaires terrain</p>
+  </div>
+  <div class="field">
+    <label>Agence</label>
+    <select id="l-ag" onchange="onAgChange()"><option value="">Sélectionner une agence...</option></select>
+  </div>
+  <div class="field">
+    <label>Utilisateur</label>
+    <select id="l-usr"><option value="">—</option></select>
+  </div>
+  <div class="field">
+    <label>Mot de passe</label>
+    <input type="password" id="l-pwd" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/>
+  </div>
+  <button class="btn btn-p" onclick="doLogin()">Se connecter</button>
+  <div id="l-err" class="toast t-err"></div>
+</div>
+</div>
+
+<!-- NAV -->
+<nav class="nav" id="main-nav" style="display:none">
+  <button class="nb on" onclick="tab('saisie')" id="nb-saisie">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" d="M12 4v16M4 12h16"/></svg>Saisie
+  </button>
+  <button class="nb" onclick="tab('encours')" id="nb-encours">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 7v5l3 3"/></svg>En cours
+  </button>
+  <button class="nb" onclick="tab('clotures')" id="nb-clotures">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" d="M9 12l2 2 4-4M5 8a7 7 0 1114 0v1a7 7 0 01-14 0V8z"/></svg>Clôturés
+  </button>
+  <button class="nb" onclick="tab('rapports')" id="nb-rapports">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><path stroke-linecap="round" d="M8 9h8M8 13h5"/></svg>Rapports
+  </button>
+  <button class="nb" id="nb-admin" style="display:none" onclick="tab('admin')">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>Admin
+  </button>
+</nav>
+
+<!-- SAISIE -->
+<div class="scr" id="scr-saisie">
+  <div class="topbar">
+    <div class="topbar-row">
+      <div><h1>Nouvel inventaire</h1><p id="s-aglab">—</p></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="s-userlab" style="font-size:12px;color:var(--text2)"></span>
+        <button class="btn-icon" onclick="logout()" title="Déconnexion">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="dots"><div class="dot act" id="d1"></div><div class="dot" id="d2"></div><div class="dot" id="d3"></div></div>
+  <div class="content" id="s-content">
+    <div id="st1">
+      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Famille de produits</div>
+      <div class="field" style="margin-bottom:14px">
+        <label>Famille</label>
+        <select id="fam-sel" onchange="onFamChange()"><option value="">Choisir une famille...</option></select>
+      </div>
+      <div id="fam-info" style="display:none;padding:10px 13px;background:var(--blue-l);border-radius:var(--r);margin-bottom:14px;font-size:13px;color:var(--blue-d)"></div>
+      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;margin-top:14px">Options</div>
+      <div class="trow">
+        <div>
+          <div style="font-size:14px;font-weight:500">Inventaire tournant</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">Affiche uniquement les articles tournants</div>
+        </div>
+        <label class="tgl"><input type="checkbox" id="tgl-t" onchange="onFamChange()"><div class="tgl-track"></div><div class="tgl-thumb"></div></label>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label>Date de l'inventaire</label>
+        <input type="date" id="inv-dt"/>
+      </div>
+      <div style="margin-top:14px"><button class="btn btn-p" onclick="goStep2()">Ouvrir le formulaire →</button></div>
+    </div>
+
+    <div id="st2" style="display:none">
+      <div class="pb-wrap">
+        <div class="pb-lbl"><span id="pb-lbl">0 / 0 articles</span><span id="pb-pct">0%</span></div>
+        <div class="pb"><div class="pb-fill" id="pb-fill" style="width:0"></div></div>
+      </div>
+      <div class="mrow">
+        <div class="met"><div class="ml">Saisis</div><div class="mv" id="m-s">0</div></div>
+        <div class="met"><div class="ml">Écarts +</div><div class="mv" style="color:var(--teal)" id="m-p">0</div></div>
+        <div class="met"><div class="ml">Écarts −</div><div class="mv" style="color:var(--red)" id="m-m">0</div></div>
+      </div>
+      <div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span id="st2-fam-badge" class="badge b-blue"></span>
+        <span id="st2-tournant-badge" style="display:none" class="badge b-amber">Tournant</span>
+        <span class="frozen-badge">
+          <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path stroke-linecap="round" d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          Stocks figés
+        </span>
+      </div>
+      <div class="tw">
+        <table><thead><tr><th>Réf.</th><th>Désignation</th><th>Stock figé</th><th>Relevé</th><th>Écart</th><th>Note</th></tr></thead>
+        <tbody id="inv-body"></tbody></table>
+      </div>
+    </div>
+
+    <div id="st3" style="display:none">
+      <div class="rh"><h2 id="v-title">Validation</h2><p id="v-sub">—</p></div>
+      <div class="kgrid">
+        <div class="kpi"><div class="kl">Articles comptés</div><div class="kv" id="v-cpt">—</div></div>
+        <div class="kpi"><div class="kl">Total articles</div><div class="kv" id="v-tot">—</div></div>
+        <div class="kpi"><div class="kl">Écarts +</div><div class="kv pos" id="v-p">—</div></div>
+        <div class="kpi"><div class="kl">Écarts −</div><div class="kv neg" id="v-m">—</div></div>
+      </div>
+      <div class="card"><div class="card-t" style="margin-bottom:10px">Principaux écarts</div><div id="v-ecarts"></div></div>
+      <div class="field" style="margin-top:4px"><label>Commentaire général</label><textarea id="v-com" rows="3" style="resize:none"></textarea></div>
+    </div>
+  </div>
+  <div class="bbar" id="bb1"><button class="btn btn-s" onclick="resetSaisie()">Annuler</button></div>
+  <div class="bbar" id="bb2" style="display:none">
+    <button class="btn btn-s btn-sm" onclick="goStep1()">← Retour</button>
+    <button class="btn btn-s" onclick="saveEncours()">Enregistrer</button>
+    <button class="btn btn-p" onclick="goStep3()">Valider →</button>
+  </div>
+  <div class="bbar" id="bb3" style="display:none">
+    <button class="btn btn-s" onclick="goStep2()">← Modifier</button>
+    <button class="btn btn-ok btn-p" onclick="cloture()">Clôturer l'inventaire</button>
+  </div>
+</div>
+
+<!-- EN COURS -->
+<div class="scr" id="scr-encours">
+  <div class="topbar"><h1>En cours</h1><p id="ec-lab">—</p></div>
+  <div class="content"><div id="t-encours" class="toast"></div><div id="encours-list"></div></div>
+</div>
+
+<!-- CLÔTURÉS -->
+<div class="scr" id="scr-clotures">
+  <div class="topbar"><h1>Clôturés</h1><p id="cl-lab">—</p></div>
+  <div class="content"><div id="t-clotures" class="toast"></div><div id="clotures-list"></div></div>
+</div>
+
+<!-- RAPPORTS -->
+<div class="scr" id="scr-rapports">
+  <div class="topbar"><h1>Rapports</h1><p>Export & analyse</p></div>
+  <div class="content">
+    <div id="t-rapports" class="toast"></div>
+    <div class="card">
+      <div class="card-t" style="margin-bottom:4px">Export Excel</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Inventaires clôturés sur une période.</div>
+      <div class="drow">
+        <div class="field"><label>Date début</label><input type="date" id="r-d1"/></div>
+        <div class="field"><label>Date fin</label><input type="date" id="r-d2"/></div>
+      </div>
+      <div class="field" style="margin-top:10px"><label>Agence</label><select id="r-ag"><option value="">Toutes</option></select></div>
+      <button class="btn btn-p" style="margin-top:12px" onclick="exportXLS()">
+        <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M8 12l4 4 4-4M12 4v12"/></svg>
+        Générer l'export
+      </button>
+    </div>
+    <div class="card"><div class="card-t" style="margin-bottom:10px">Statistiques</div><div id="rpt-stats"></div></div>
+  </div>
+</div>
+
+<!-- ADMIN -->
+<div class="scr" id="scr-admin">
+  <div class="topbar">
+    <div class="topbar-row">
+      <div><h1>Administration</h1><p>Gestion globale</p></div>
+      <span class="admin-pill">ADMIN</span>
+    </div>
+  </div>
+  <div class="content">
+    <div id="t-admin" class="toast"></div>
+
+    <!-- Import articles -->
+    <div class="sec-title">Import catalogue articles (Excel)</div>
+    <div class="import-zone" onclick="document.getElementById('xl-art').click()">
+      <svg width="26" height="26" fill="none" viewBox="0 0 24 24" stroke="var(--blue-m)" stroke-width="1.5"><path stroke-linecap="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M16 8l-4-4-4 4M12 4v12"/></svg>
+      <p>Importer un fichier Excel articles<br><span style="font-size:11px;color:var(--text3)">feuille "Articles" · colonnes A–F</span></p>
+    </div>
+    <input type="file" id="xl-art" accept=".xlsx,.xls" style="display:none" onchange="importArticles(this)"/>
+    <div id="xl-art-result" style="margin-top:8px"></div>
+    <div class="note-box" style="margin-top:10px">
+      <strong>Format articles :</strong> feuille nommée <code>Articles</code><br>
+      A = agence &nbsp;·&nbsp; B = ref &nbsp;·&nbsp; C = designation &nbsp;·&nbsp; D = famille &nbsp;·&nbsp; E = stock &nbsp;·&nbsp; F = tournant (0/1)
+    </div>
+    <button class="btn btn-s btn-sm" style="margin-bottom:4px" onclick="dlTemplateArticles()">⬇ Télécharger modèle articles</button>
+
+    <div class="sdiv"></div>
+
+    <!-- Import utilisateurs -->
+    <div class="sec-title">Import utilisateurs (Excel / CSV)</div>
+    <div class="import-zone" onclick="document.getElementById('xl-usr').click()">
+      <svg width="26" height="26" fill="none" viewBox="0 0 24 24" stroke="var(--blue-m)" stroke-width="1.5"><path stroke-linecap="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M16 8l-4-4-4 4M12 4v12"/></svg>
+      <p>Importer un fichier utilisateurs<br><span style="font-size:11px;color:var(--text3)">.xlsx ou .csv · colonnes A–D</span></p>
+    </div>
+    <input type="file" id="xl-usr" accept=".xlsx,.xls,.csv" style="display:none" onchange="importUsers(this)"/>
+    <div id="xl-usr-result" style="margin-top:8px"></div>
+    <div class="note-box" style="margin-top:10px">
+      <strong>Format utilisateurs :</strong><br>
+      A = agence_id &nbsp;·&nbsp; B = nom &nbsp;·&nbsp; C = login &nbsp;·&nbsp; D = mot_de_passe<br>
+      <span style="font-size:11px">Ligne 1 = en-tête. Les agences inconnues sont créées automatiquement.</span>
+    </div>
+    <button class="btn btn-s btn-sm" style="margin-bottom:4px" onclick="dlTemplateUsers()">⬇ Télécharger modèle utilisateurs</button>
+
+    <div class="sdiv"></div>
+
+    <!-- Agences -->
+    <div class="sec-title">Agences</div>
+    <div id="adm-agences"></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <input type="text" id="new-ag-id" placeholder="Code (AGC-OUE)" style="flex:1;padding:9px 11px;border:0.5px solid var(--bord2);border-radius:var(--r);font-size:13px;font-family:inherit"/>
+      <input type="text" id="new-ag-lbl" placeholder="Nom (Lille)" style="flex:1;padding:9px 11px;border:0.5px solid var(--bord2);border-radius:var(--r);font-size:13px;font-family:inherit"/>
+      <button class="btn btn-p btn-sm" style="white-space:nowrap;width:auto" onclick="addAgence()">+ Agence</button>
+    </div>
+
+    <div class="sdiv"></div>
+
+    <!-- Utilisateurs -->
+    <div class="sec-title">Utilisateurs</div>
+    <div id="adm-users"></div>
+
+    <!-- Créer utilisateur -->
+    <div class="card" style="margin-top:10px">
+      <div class="card-t" style="margin-bottom:12px">Créer un utilisateur</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="field"><label>Agence</label><select id="nu-ag"></select></div>
+        <div class="field"><label>Nom complet</label><input type="text" id="nu-nom" placeholder="Prénom Nom"/></div>
+        <div class="field"><label>Login</label><input type="text" id="nu-login" placeholder="p.nom" autocomplete="off"/></div>
+        <div class="field"><label>Mot de passe</label><input type="password" id="nu-pwd" placeholder="Min. 6 caractères" autocomplete="new-password"/></div>
+        <button class="btn btn-ok" onclick="createUser()">Créer l'utilisateur</button>
+      </div>
+    </div>
+
+    <div class="sdiv"></div>
+
+    <!-- Changer MDP admin -->
+    <div class="sec-title">Mot de passe admin</div>
+    <div class="card">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="field"><label>Nouveau mot de passe</label><input type="password" id="adm-pwd1" placeholder="Min. 6 caractères" autocomplete="new-password"/></div>
+        <div class="field"><label>Confirmer</label><input type="password" id="adm-pwd2" placeholder="Répéter"/></div>
+        <button class="btn btn-s" onclick="changeAdminPwd()">Modifier mon mot de passe</button>
+      </div>
+    </div>
+
+    <div class="sdiv"></div>
+    <!-- Export sauvegarde -->
+    <div class="sec-title">Sauvegarde des données</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-s btn-sm" style="flex:1" onclick="exportBackup()">⬇ Exporter toutes les données</button>
+      <button class="btn btn-s btn-sm" style="flex:1;color:var(--red);border-color:var(--red)" onclick="resetAll()">⚠ Réinitialiser</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- MODAL RAPPORT -->
+<div class="moverlay" id="modal" onclick="if(event.target===this)closeModalNow()">
+  <div class="mbox">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 id="m-title">Détail</h3>
+      <button class="btn-icon" onclick="closeModalNow()"><svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div id="m-body"></div>
+    <div id="m-actions" style="display:flex;gap:8px;margin-top:14px"></div>
+  </div>
+</div>
+
+<!-- MODAL MDP utilisateur -->
+<div class="moverlay" id="modal-pwd" onclick="if(event.target===this)this.classList.remove('on')">
+  <div class="mbox">
+    <h3>Changer le mot de passe</h3>
+    <p id="pwd-target-lbl" style="font-size:13px;color:var(--text2);margin-bottom:14px"></p>
+    <div class="field" style="margin-bottom:12px"><label>Nouveau mot de passe</label><input type="password" id="pwd-new" placeholder="Min. 6 caractères" autocomplete="new-password"/></div>
+    <div class="field" style="margin-bottom:14px"><label>Confirmer</label><input type="password" id="pwd-confirm"/></div>
+    <div id="pwd-err" class="toast t-err" style="margin-bottom:10px"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ok" onclick="savePwd()">Enregistrer</button>
+      <button class="btn btn-s" onclick="document.getElementById('modal-pwd').classList.remove('on')">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<script>
 // ================================================================
 // STOCKAGE localStorage
 // ================================================================
