@@ -551,22 +551,22 @@ async function doLogin(){
   if(!usr){toast2(err,'Sélectionnez un utilisateur','err');return;}
   if(!pwd){toast2(err,'Saisissez le mot de passe','err');return;}
   var btn=document.getElementById('btn-login');
-  btn.disabled=true;btn.textContent='Connexion...';
+  if(btn){btn.disabled=true;btn.textContent='Connexion...';}
   try{
     if(ag==='__ADMIN__'&&usr==='admin'){
       var admins=await sbGet('users','login=eq.admin&is_admin=eq.true');
-      if(!admins.length||admins[0].pwd!==pwd){toast2(err,'Mot de passe incorrect','err');btn.disabled=false;btn.textContent='Se connecter';return;}
+      if(!admins.length||admins[0].pwd!==pwd){toast2(err,'Mot de passe incorrect','err');if(btn){btn.disabled=false;btn.textContent='Se connecter';}return;}
       S.user=admins[0];S.agence='__ADMIN__';S.agLabel='Administration';S.isAdmin=true;
       await enterApp();tab('admin');
     }else{
       var users=await sbGet('users','login=eq.'+encodeURIComponent(usr)+'&agence_id=eq.'+ag+'&is_admin=eq.false');
-      if(!users.length||users[0].pwd!==pwd){toast2(err,'Mot de passe incorrect','err');btn.disabled=false;btn.textContent='Se connecter';return;}
+      if(!users.length||users[0].pwd!==pwd){toast2(err,'Mot de passe incorrect','err');if(btn){btn.disabled=false;btn.textContent='Se connecter';}return;}
       S.user=users[0];S.agence=ag;S.isAdmin=false;
       S.agLabel=(S.agences.find(a=>a.id===ag)||{}).label||ag;
       await enterApp();tab('saisie');
     }
   }catch(e){toast2(err,'Erreur : '+e.message,'err');}
-  btn.disabled=false;btn.textContent='Se connecter';
+  if(btn){btn.disabled=false;btn.textContent='Se connecter';}
 }
 
 async function enterApp(){
