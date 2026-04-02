@@ -630,8 +630,9 @@ async function renderAdminPage(){
   elAg.innerHTML=S.agences.length?S.agences.map(function(ag){
     var nb=(S._adminUsers||[]).filter(u=>u.agence_id===ag.id).length;
     return '<div class="user-row"><div class="uinfo"><div class="uname"><span class="ag-badge">'+ag.id+'</span> '+ag.label+'</div><div class="umeta">'+nb+' utilisateur(s)</div></div>'+
-      '<button class="btn btn-s btn-sm" onclick="deleteAgence(\''+ag.id+'\')" style="color:var(--red);border-color:var(--red)">Supprimer</button></div>';
+      '<button class="btn btn-s btn-sm adm-del-ag" data-id="'+ag.id+'" style="color:var(--red);border-color:var(--red)">Supprimer</button></div>';
   }).join(''):'<div style="font-size:13px;color:var(--text2);padding:6px 0">Aucune agence.</div>';
+  elAg.querySelectorAll('.adm-del-ag').forEach(function(btn){btn.addEventListener('click',function(){deleteAgence(this.dataset.id);});});
   // Users
   var elU=document.getElementById('adm-users');
   var html='';
@@ -640,13 +641,16 @@ async function renderAdminPage(){
     if(!list.length)return;
     html+='<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 4px">'+ag.label+' <span class="ag-badge">'+ag.id+'</span></div>';
     list.forEach(function(u){
-      var safeNom=u.nom.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
       html+='<div class="user-row"><div class="uinfo"><div class="uname">'+u.nom+'</div><div class="umeta">@'+u.login+'</div></div>'+
-        '<div class="uactions"><button class="btn btn-s btn-sm" onclick="openPwdModal(\''+u.id+'\',\''+safeNom+'\',\''+u.login+'\')">🔑 MDP</button>'+
-        '<button class="btn btn-s btn-sm" onclick="deleteUser(\''+u.id+'\',\''+safeNom+'\')" style="color:var(--red);border-color:var(--red)">✕</button></div></div>';
+        '<div class="uactions">'+
+        '<button class="btn btn-s btn-sm adm-pwd-btn" data-id="'+u.id+'" data-nom="'+u.nom.replace(/"/g,'&quot;')+'" data-login="'+u.login+'">🔑 MDP</button>'+
+        '<button class="btn btn-s btn-sm adm-del-usr" data-id="'+u.id+'" data-nom="'+u.nom.replace(/"/g,'&quot;')+'" style="color:var(--red);border-color:var(--red)">✕</button>'+
+        '</div></div>';
     });
   });
   elU.innerHTML=html||'<div style="font-size:13px;color:var(--text2);padding:6px 0">Aucun utilisateur.</div>';
+  elU.querySelectorAll('.adm-pwd-btn').forEach(function(btn){btn.addEventListener('click',function(){openPwdModal(this.dataset.id,this.dataset.nom,this.dataset.login);});});
+  elU.querySelectorAll('.adm-del-usr').forEach(function(btn){btn.addEventListener('click',function(){deleteUser(this.dataset.id,this.dataset.nom);});});
   // Select agence form
   var sel=document.getElementById('nu-ag');
   sel.innerHTML='<option value="">-- Choisir --</option>';
@@ -1056,9 +1060,12 @@ async function renderEncours(){
       d.innerHTML='<div class="ii-top"><div class="ii-title">'+inv.fam_id+'</div><span class="badge b-blue">'+pct+'%</span></div>'+
         '<div class="ii-sub">'+inv.ag_label+' · '+fmtD(inv.date_inv)+' · '+inv.user_nom+(inv.tournant?' · <span class="badge b-amber">Tournant</span>':'')+'</div>'+
         '<div style="margin:8px 0 4px"><div class="pb"><div class="pb-fill" style="width:'+pct+'%"></div></div></div>'+
-        '<div class="ii-foot"><button class="btn btn-p btn-sm" onclick="resumeInv(\''+inv.id+'\')">Reprendre</button>'+
-        '<button class="btn btn-s btn-sm" onclick="delInv(\''+inv.id+'\')">Supprimer</button>'+
+        '<div class="ii-foot">'+
+        '<button class="btn btn-p btn-sm ec-resume" data-id="'+inv.id+'">Reprendre</button>'+
+        '<button class="btn btn-s btn-sm ec-del" data-id="'+inv.id+'">Supprimer</button>'+
         '<span style="font-size:11px;color:var(--text3)">'+s+'/'+tot+' art.</span></div>';
+      d.querySelector('.ec-resume').addEventListener('click',function(){resumeInv(this.dataset.id);});
+      d.querySelector('.ec-del').addEventListener('click',function(){delInv(this.dataset.id);});
       el.appendChild(d);
     }
   }catch(e){el.innerHTML='<div class="empty"><p style="color:var(--red)">Erreur : '+e.message+'</p></div>';}
@@ -1104,7 +1111,8 @@ async function renderClotures(){
         '<div class="ii-foot"><span class="badge b-gray">'+s+' comptés</span>'+
         '<span class="badge '+(ecarts>0?'b-amber':'b-teal')+'">'+ecarts+' écarts</span>'+
         (inv.tournant?'<span class="badge b-amber">Tournant</span>':'')+
-        '<button class="btn btn-s btn-sm" onclick="showRapport(\''+inv.id+'\')">Voir / PDF</button></div>';
+        '<button class="btn btn-s btn-sm cl-voir" data-id="'+inv.id+'">Voir / PDF</button></div>';
+      d.querySelector('.cl-voir').addEventListener('click',function(){showRapport(this.dataset.id);});
       el.appendChild(d);
     }
     // Bouton PDF sélection en bas
@@ -1166,7 +1174,9 @@ async function showRapport(id){
     html+='</tbody></table></div>';
     if(inv.comment_g)html+='<div style="margin-top:10px;padding:10px;background:var(--bg2);border-radius:var(--r);font-size:13px;color:var(--text2)">'+inv.comment_g+'</div>';
     document.getElementById('m-body').innerHTML=html;
-    document.getElementById('m-actions').innerHTML='<button class="btn btn-p btn-sm" onclick="genPDF(\''+id+'\')">Télécharger PDF</button><button class="btn btn-s btn-sm" onclick="closeModalNow()">Fermer</button>';
+    var actEl=document.getElementById('m-actions');
+    actEl.innerHTML='<button class="btn btn-p btn-sm" id="btn-dl-pdf">Télécharger PDF</button><button class="btn btn-s btn-sm" onclick="closeModalNow()">Fermer</button>';
+    actEl.querySelector('#btn-dl-pdf').addEventListener('click',function(){genPDF(id);});
     document.getElementById('modal').classList.add('on');
   }catch(e){alert('Erreur : '+e.message);}
 }
