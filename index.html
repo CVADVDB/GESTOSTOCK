@@ -630,7 +630,7 @@ async function renderAdminPage(){
   elAg.innerHTML=S.agences.length?S.agences.map(function(ag){
     var nb=(S._adminUsers||[]).filter(u=>u.agence_id===ag.id).length;
     return '<div class="user-row"><div class="uinfo"><div class="uname"><span class="ag-badge">'+ag.id+'</span> '+ag.label+'</div><div class="umeta">'+nb+' utilisateur(s)</div></div>'+
-      '<button class="btn btn-s btn-sm" onclick="deleteAgence(''+ag.id+'')" style="color:var(--red);border-color:var(--red)">Supprimer</button></div>';
+      '<button class="btn btn-s btn-sm" onclick="deleteAgence(\''+ag.id+'\')" style="color:var(--red);border-color:var(--red)">Supprimer</button></div>';
   }).join(''):'<div style="font-size:13px;color:var(--text2);padding:6px 0">Aucune agence.</div>';
   // Users
   var elU=document.getElementById('adm-users');
@@ -640,9 +640,10 @@ async function renderAdminPage(){
     if(!list.length)return;
     html+='<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 4px">'+ag.label+' <span class="ag-badge">'+ag.id+'</span></div>';
     list.forEach(function(u){
+      var safeNom=u.nom.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
       html+='<div class="user-row"><div class="uinfo"><div class="uname">'+u.nom+'</div><div class="umeta">@'+u.login+'</div></div>'+
-        '<div class="uactions"><button class="btn btn-s btn-sm" onclick="openPwdModal(''+u.id+'',''+u.nom.replace(/'/g,"\'")+''  ,''+u.login+'')">🔑 MDP</button>'+
-        '<button class="btn btn-s btn-sm" onclick="deleteUser(''+u.id+'',''+u.nom.replace(/'/g,"\'")+  '')" style="color:var(--red);border-color:var(--red)">✕</button></div></div>';
+        '<div class="uactions"><button class="btn btn-s btn-sm" onclick="openPwdModal(\''+u.id+'\',\''+safeNom+'\',\''+u.login+'\')">🔑 MDP</button>'+
+        '<button class="btn btn-s btn-sm" onclick="deleteUser(\''+u.id+'\',\''+safeNom+'\')" style="color:var(--red);border-color:var(--red)">✕</button></div></div>';
     });
   });
   elU.innerHTML=html||'<div style="font-size:13px;color:var(--text2);padding:6px 0">Aucun utilisateur.</div>';
@@ -928,7 +929,7 @@ function buildTable(){
     tr.innerHTML='<td style="font-family:monospace;font-size:11px;white-space:nowrap">'+a.ref+(a.tournant?'<br><span class="badge b-amber" style="font-size:9px;padding:1px 5px">T</span>':'')+'</td>'+
       '<td style="max-width:120px;font-size:12px;line-height:1.3">'+a.designation+'</td>'+
       '<td style="text-align:right;font-weight:600">'+fs+'</td>'+
-      '<td><input class="iqty'+(v!==''?' ok':'')+'" id="q-'+a.ref+'" type="number" min="0" value="'+(v!==''?v:'')+'" placeholder="—" oninput="updRow(''+a.ref+'','+fs+')"/></td>'+
+      '<td><input class="iqty'+(v!==''?' ok':'')+'" id="q-'+a.ref+'" type="number" min="0" value="'+(v!==''?v:'')+'" placeholder="—" oninput="updRow(\''+a.ref+'\','+fs+')"/></td>'+
       '<td class="ev"><span class="'+eCl+'" id="e-'+a.ref+'">'+(e!==null?(e>0?'+':'')+e:'—')+'</span></td>'+
       '<td><input class="icom" id="c-'+a.ref+'" value="'+c+'" placeholder="Note..."/></td>';
     tbody.appendChild(tr);
