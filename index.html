@@ -266,12 +266,12 @@ tr.em td{background:rgba(252,235,235,.35)}
   <div class="bbar" id="bb1"><button class="btn btn-s" onclick="resetSaisie()">Annuler</button></div>
   <div class="bbar" id="bb2" style="display:none">
     <button class="btn btn-s btn-sm" onclick="goStep1()">← Retour</button>
-    <button class="btn btn-s" onclick="saveEncours()">Enregistrer</button>
+    <button class="btn btn-s" id="btn-save" onclick="saveEncours()">Enregistrer</button>
     <button class="btn btn-p" onclick="goStep3()">Valider →</button>
   </div>
   <div class="bbar" id="bb3" style="display:none">
     <button class="btn btn-s" onclick="goStep2()">← Modifier</button>
-    <button class="btn btn-ok btn-p" onclick="cloture()">Clôturer l'inventaire</button>
+    <button class="btn btn-ok btn-p" id="btn-clot" onclick="cloture()">Clôturer l'inventaire</button>
   </div>
 </div>
 
@@ -968,7 +968,8 @@ function syncComs(){activeArts().forEach(function(a){var c=document.getElementBy
 // ================================================================
 async function saveEncours(){
   syncComs();
-  var btn=document.getElementById('btn-save');btn.disabled=true;btn.textContent='Enreg...';
+  var btn=document.getElementById('btn-save');
+  if(btn){btn.disabled=true;btn.textContent='Enreg...';}
   var uLogin=S.user?S.user.login:'admin';
   var uNom=S.user?S.user.nom:'Administrateur';
   try{
@@ -983,7 +984,7 @@ async function saveEncours(){
     floatToast('Inventaire enregistré ✓');
     renderEncours();
   }catch(e){toast('t-encours','Erreur sauvegarde : '+e.message,'err');}
-  btn.disabled=false;btn.textContent='Enregistrer';
+  if(btn){btn.disabled=false;btn.textContent='Enregistrer';}
 }
 
 async function upsertLignes(invId){
@@ -1008,7 +1009,8 @@ function goStep3(){
 
 async function cloture(){
   syncComs();
-  var btn=document.getElementById('btn-clot');btn.disabled=true;btn.textContent='Clôture...';
+  var btn=document.getElementById('btn-clot');
+  if(btn){btn.disabled=true;btn.textContent='Clôture...';}
   var commentG=document.getElementById('v-com').value;
   var uLogin=S.user?S.user.login:'admin';
   var uNom=S.user?S.user.nom:'Administrateur';
@@ -1021,7 +1023,6 @@ async function cloture(){
     }
     await upsertLignes(invId);
     S.editId=null;resetSaisie();
-    // Si admin, revenir sur l'onglet admin et réinitialiser l'agence saisie
     if(S.isAdmin){
       S.agence=null;S.agLabel=null;S.articles=[];
       tab('admin');
@@ -1031,7 +1032,7 @@ async function cloture(){
       setTimeout(()=>toast('t-clotures','Inventaire clôturé avec succès','ok'),100);
     }
   }catch(e){toast('t-clotures','Erreur : '+e.message,'err');}
-  btn.disabled=false;btn.textContent='Clôturer l\'inventaire';
+  if(btn){btn.disabled=false;btn.textContent='Clôturer l\'inventaire';}
 }
 
 function resetSaisie(){
